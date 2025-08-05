@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # MySQL Database Service
+  mysql:
+    image: mysql:8.0
+    container_name: parking_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: fit5120_db
+      MYSQL_USER: parking_user
+      MYSQL_PASSWORD: parking_pass
+    ports:
+      - "3307:3306"  # External port 3307 to avoid conflicts with local MySQL
+    volumes:
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql  # Initialize database with SQL script
+      - mysql_data:/var/lib/mysql  # Persist database data
+    networks:
+      - parking_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Flask Backend Service
+  backend:
+    build: ./backend
+    container_name: parking_backend
+    ports:
+      - "5001:5000"  # External port 5001, internal port 5000
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - DATABASE_URL=mysql+pymysql://root:password@mysql:3306/fit5120_db
+      - PYTHONPATH=/app
+    depends_on:
+      mysql:
+        condition: service_healthy  # Wait for MySQL to be ready
+    volumes:
+      - ./backend:/app  # Mount backend code for development
+      - /app/__pycache__  # Exclude Python cache
+    networks:
+      - parking_network
+    restart: unless-stopped
+    command: python main.py  # Start the Flask application
+
+  # Vue.js Frontend Service
+  frontend:
+    build: ./frontend
+    container_name: parking_frontend
+    ports:
+      - "3000:3000"  # Development server port
+    environment:
+      - VITE_API_BASE_URL=http://localhost:5001  # Backend API URL
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app  # Mount frontend code for development
+      - /app/node_modules  # Preserve node_modules in container
+    networks:
+      - parking_network
+    restart: unless-stopped
+    command: npm run dev -- --host 0.0.0.0  # Allow external connections
+
+  # Optional: phpMyAdmin for database management
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: parking_phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+    ports:
+      - "8080:80"  # Access phpMyAdmin at http://localhost:8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - parking_network
+    restart: unless-stopped
+    profiles:
+      - debug  # Only start with: docker-compose --profile debug up
+
+# Named volumes for data persistence
+volumes:
+  mysql_data:
+    driver: local  # Store MySQL data locally
+
+# Network configuration
+networks:
+  parking_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16  # Custom subnet for better network isolation
