@@ -1,6 +1,6 @@
 <template>
   <div class="melbourne-parking-app">
-    <!-- 顶部搜索栏 -->
+    <!-- top search bar -->
     <div class="search-container">
       <div class="search-box">
         <span class="search-icon">🔍</span>
@@ -58,17 +58,17 @@
       </div>
     </div>
 
-    <!-- 地图容器 -->
+    <!-- the container of maps -->
     <div class="map-container">
       <div id="melbourne-map" class="leaflet-map"></div>
 
-      <!-- 实时数据状态指示器 -->
+      <!-- real-time status -->
       <div class="realtime-status">
         <div :class="['status-dot', connectionStatus]"></div>
         <span class="status-text">{{ connectionStatusText }}</span>
       </div>
 
-      <!-- 地图控制按钮 -->
+      <!-- map-controls-button -->
       <div class="map-controls">
         <button @click="refreshData" class="control-btn" :disabled="isLoading">
           <span class="btn-icon">🔄</span>
@@ -84,14 +84,14 @@
         </button>
       </div>
 
-      <!-- 加载覆盖层 -->
+      <!-- load-overlay -->
       <div v-if="isLoading" class="loading-overlay">
         <div class="loading-spinner"></div>
         <p class="loading-text">{{ loadingMessage }}</p>
       </div>
     </div>
 
-    <!-- 停车位详情面板 -->
+    <!-- parking info dashboard -->
     <div v-if="selectedParking" class="details-panel" :class="{ visible: selectedParking }">
       <div class="panel-header">
         <h3 class="panel-title">
@@ -136,7 +136,7 @@
       </div>
     </div>
 
-    <!-- 状态消息 -->
+    <!-- statusMessage -->
     <div v-if="statusMessage" class="status-message" :class="messageType">
       {{ statusMessage }}
     </div>
@@ -942,7 +942,7 @@ export default {
   50% { opacity: 0.5; }
 }
 
-/* 状态消息 */
+/* status-message  */
 .status-message {
   position: fixed;
   top: 1rem;
