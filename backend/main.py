@@ -23,6 +23,8 @@ def create_app():
 
     # For Render.com PostgreSQL (production)
     if database_url and database_url.startswith('postgresql'):
+        # Replace postgresql:// with postgresql+psycopg:// to use psycopg driver
+        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://')
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     # For local MySQL (development)
     else:
