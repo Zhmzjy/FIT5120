@@ -14,8 +14,8 @@ def register_routes(app):
     Args:
         app: Flask application instance
     """
-    # Register health routes at root level
-    app.register_blueprint(health_bp, url_prefix='/health')
+    # Register health routes at root level - fix health check path
+    app.register_blueprint(health_bp, url_prefix='')
 
     # Register parking routes
     app.register_blueprint(parking_bp, url_prefix='/api/parking')
