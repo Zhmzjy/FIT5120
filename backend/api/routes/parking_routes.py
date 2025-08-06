@@ -47,11 +47,22 @@ def get_live_parking():
                 ParkingSensor.longitude.between(lng - lng_range, lng + lng_range)
             )
 
-        # Get recent data (last 24 hours)
-        yesterday = datetime.utcnow() - timedelta(hours=24)
-        query = query.filter(ParkingSensor.last_updated >= yesterday)
+        # Get recent data (last 7 days instead of 24 hours to ensure we have data)
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        query = query.filter(ParkingSensor.last_updated >= week_ago)
 
         sensors = query.limit(200).all()
+
+        # If no recent data, get any available data
+        if not sensors:
+            print("⚠️ No recent data found, getting all available data...")
+            query = ParkingSensor.query
+            if status_filter != 'all':
+                if status_filter.lower() == 'available':
+                    query = query.filter(ParkingSensor.status_description == 'Unoccupied')
+                elif status_filter.lower() == 'occupied':
+                    query = query.filter(ParkingSensor.status_description == 'Occupied')
+            sensors = query.limit(200).all()
 
         return jsonify({
             'success': True,
