@@ -18,11 +18,19 @@ def create_app():
     app = Flask(__name__)
     CORS(app)
 
-    # Database configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-        'DATABASE_URL',
-        'mysql+pymysql://root:password@mysql/fit5120_db'
-    )
+    # Database configuration with automatic detection
+    database_url = os.getenv('DATABASE_URL')
+
+    # For Render.com PostgreSQL (production)
+    if database_url and database_url.startswith('postgresql'):
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    # For local MySQL (development)
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+            'DATABASE_URL',
+            'mysql+pymysql://root:password@mysql/fit5120_db'
+        )
+
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Initialize extensions
@@ -70,15 +78,20 @@ if __name__ == '__main__':
     # Create Flask app
     app = create_app()
 
-    # Initialize database
-    initialize_database(app)
+    # Initialize database only in development mode
+    if not os.getenv('RENDER'):
+        initialize_database(app)
+
+    # Get port from environment for production deployment
+    port = int(os.getenv('PORT', 5000))
+    debug_mode = os.getenv('FLASK_ENV') != 'production'
 
     print("📍 API Endpoints Available:")
-    print("   - Health Check: http://localhost:5001/health")
-    print("   - Live Parking: http://localhost:5001/api/parking/live")
-    print("   - Search: http://localhost:5001/api/parking/search")
-    print("   - Statistics: http://localhost:5001/api/stats")
-    print("   - Update Data: http://localhost:5001/api/parking/update")
+    print("   - Health Check: /health")
+    print("   - Live Parking: /api/parking/live")
+    print("   - Search: /api/parking/search")
+    print("   - Statistics: /api/stats")
+    print("   - Update Data: /api/parking/update")
 
     print("🌐 Starting Flask application...")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
