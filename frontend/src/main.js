@@ -1,16 +1,8 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
-import MelbourneParkingMap from './components/MelbourneParkingMap.vue'
 
-const routes = [
-  { path: '/', component: MelbourneParkingMap },
-  { path: '/map', redirect: '/' }
-]
+// 引入Leaflet CSS
+import 'leaflet/dist/leaflet.css'
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-})
-
-createApp(App).use(router).mount('#app')
+const app = createApp(App)
+app.mount('#app')

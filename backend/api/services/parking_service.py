@@ -14,45 +14,58 @@ class MelbourneParkingService:
     API_BASE_URL = "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets/on-street-parking-bay-sensors/records"
 
     @classmethod
-    def fetch_live_parking_data(cls, limit: int = 500, status_filter: str = None) -> List[Dict]:
+    def fetch_live_parking_data(cls, limit: int = 100, status_filter: str = None) -> List[Dict]:
         """
         Fetch real-time parking data from Melbourne Open Data API
 
         Args:
-            limit: Maximum number of records to fetch
+            limit: Maximum number of records to fetch (max 100 per API limits)
             status_filter: Filter by status ('Unoccupied', 'Occupied', or None for all)
 
         Returns:
             List of parking sensor records
         """
         try:
+            # Use the correct API format with proper limits
+            # Melbourne API only allows max 100 records per request
+            actual_limit = min(limit, 100)  # Ensure we don't exceed API limits
+
             params = {
-                'select': 'status_description, zone_number, kerbsideid, location, status_timestamp',
-                'limit': limit,
+                'select': 'status_description,zone_number,kerbsideid,location,status_timestamp',
+                'limit': actual_limit,
                 'offset': 0,
                 'order_by': 'status_timestamp DESC'
             }
 
-            # Add status filter if specified
+            # Add status filter if specified (use proper syntax)
             if status_filter:
-                params['where'] = f"status_description='{status_filter}'"
+                params['where'] = f"status_description = '{status_filter}'"
 
-            print(f"Fetching parking data with params: {params}")
+            print(f"🔄 Fetching parking data from Melbourne Government API...")
+            print(f"📊 Parameters: {params}")
 
             response = requests.get(cls.API_BASE_URL, params=params, timeout=30)
+
+            print(f"📡 API Response Status: {response.status_code}")
+            print(f"🔗 Request URL: {response.url}")
+
+            if response.status_code != 200:
+                print(f"❌ API Error Response: {response.text[:500]}")
+                return []
+
             response.raise_for_status()
 
             data = response.json()
             results = data.get('results', [])
 
-            print(f"Successfully fetched {len(results)} parking records")
+            print(f"✅ Successfully fetched {len(results)} real parking records from Melbourne Government!")
             return results
 
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching parking data: {e}")
+            print(f"❌ Error fetching parking data: {e}")
             return []
         except Exception as e:
-            print(f"Unexpected error in parking data fetch: {e}")
+            print(f"❌ Unexpected error in parking data fetch: {e}")
             return []
 
     @classmethod

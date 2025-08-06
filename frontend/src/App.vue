@@ -1,12 +1,17 @@
 <template>
   <div id="app">
-    <router-view />
+    <MelbourneParkingMap />
   </div>
 </template>
 
 <script>
+import MelbourneParkingMap from './components/MelbourneParkingMap.vue'
+
 export default {
-  name: 'App'
+  name: 'App',
+  components: {
+    MelbourneParkingMap
+  }
 }
 </script>
 
@@ -27,5 +32,6 @@ body, html {
   height: 100%;
   margin: 0;
   padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 </style>
