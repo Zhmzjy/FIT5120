@@ -21,7 +21,6 @@ services:
   - type: web
     name: melbourne-parking-frontend
     env: static
-    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:
