@@ -17,29 +17,19 @@ def health_check():
     Basic health check endpoint - optimized for Render.com
     """
     try:
-        # Quick database connection test with timeout
-        from sqlalchemy import text
-        result = db.session.execute(text("SELECT 1")).scalar()
+        # Simplified database connection test - avoid SQLAlchemy version conflicts
+        sensor_count = ParkingSensor.query.count()
 
-        if result == 1:
-            # Quick sensor count check
-            try:
-                sensor_count = ParkingSensor.query.count()
-            except:
-                sensor_count = "checking..."
-
-            return jsonify({
-                'status': 'healthy',
-                'service': 'Melbourne Parking API',
-                'version': '1.0.0',
-                'timestamp': datetime.utcnow().isoformat(),
-                'database': {
-                    'status': 'connected',
-                    'total_sensors': sensor_count
-                }
-            }), 200
-        else:
-            raise Exception("Database connection test failed")
+        return jsonify({
+            'status': 'healthy',
+            'service': 'Melbourne Parking API',
+            'version': '1.0.0',
+            'timestamp': datetime.utcnow().isoformat(),
+            'database': {
+                'status': 'connected',
+                'total_sensors': sensor_count
+            }
+        }), 200
 
     except Exception as e:
         # Return healthy status even if database is still initializing
@@ -50,7 +40,7 @@ def health_check():
             'timestamp': datetime.utcnow().isoformat(),
             'database': {
                 'status': 'initializing',
-                'message': 'Database connection pending'
+                'message': 'Service starting up'
             }
         }), 200
 
