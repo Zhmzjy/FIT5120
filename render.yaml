@@ -1,9 +1,4 @@
 services:
-  # PostgreSQL Database
-  - type: pserv
-    name: melbourne-parking-db
-    plan: free
-
   # Backend API Service
   - type: web
     name: melbourne-parking-api
@@ -32,3 +27,7 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         value: https://melbourne-parking-api.onrender.com
+
+databases:
+  - name: melbourne-parking-db
+    plan: free
