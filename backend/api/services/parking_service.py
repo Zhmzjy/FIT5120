@@ -108,26 +108,26 @@ class MelbourneParkingService:
                         except:
                             status_timestamp = datetime.utcnow()
 
+                    # Convert zone_number to string to match database field type
+                    zone_num = record.get('zone_number')
+                    zone_number_str = str(zone_num) if zone_num is not None else None
+
                     # Update or create parking sensor record
                     sensor = ParkingSensor.query.filter_by(kerbside_id=kerbside_id).first()
 
                     if sensor:
                         # Update existing record
                         sensor.status_description = record.get('status_description', 'Unknown')
-                        # Convert zone_number to string to match database field type
-                        zone_num = record.get('zone_number')
-                        sensor.zone_number = str(zone_num) if zone_num is not None else None
+                        sensor.zone_number = zone_number_str
                         sensor.latitude = float(location['lat'])
                         sensor.longitude = float(location['lon'])
                         sensor.status_timestamp = status_timestamp
                         sensor.last_updated = datetime.utcnow()
                     else:
                         # Create new record
-                        # Convert zone_number to string to match database field type
-                        zone_num = record.get('zone_number')
                         sensor = ParkingSensor(
                             kerbside_id=kerbside_id,
-                            zone_number=str(zone_num) if zone_num is not None else None,
+                            zone_number=zone_number_str,
                             status_description=record.get('status_description', 'Unknown'),
                             latitude=float(location['lat']),
                             longitude=float(location['lon']),
