@@ -30,3 +30,5 @@ services:
 databases:
   - name: melbourne-parking-db
     plan: free
+    databaseName: melbourne_parking
+    user: postgres
