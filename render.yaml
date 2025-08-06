@@ -3,8 +3,6 @@ services:
   - type: pserv
     name: melbourne-parking-db
     plan: free
-    databaseName: melbourne_parking
-    user: melbourne_user
 
   # Backend API Service
   - type: web
