@@ -53,6 +53,11 @@ def get_live_parking():
 
         sensors = query.limit(200).all()
 
+        # Debug: Print database status
+        total_sensors = ParkingSensor.query.count()
+        print(f"🔍 Database status: {total_sensors} total sensors in database")
+        print(f"🔍 Recent sensors (7 days): {len(sensors)} sensors found")
+
         # If no recent data, get any available data
         if not sensors:
             print("⚠️ No recent data found, getting all available data...")
@@ -63,6 +68,14 @@ def get_live_parking():
                 elif status_filter.lower() == 'occupied':
                     query = query.filter(ParkingSensor.status_description == 'Occupied')
             sensors = query.limit(200).all()
+            print(f"🔍 Fallback query returned: {len(sensors)} sensors")
+
+        # Debug: Print sample data
+        if sensors:
+            sample = sensors[0]
+            print(f"🔍 Sample sensor: ID={sample.kerbside_id}, Status={sample.status_description}, Updated={sample.last_updated}")
+        else:
+            print("❌ No sensors found in database!")
 
         return jsonify({
             'success': True,
@@ -229,4 +242,51 @@ def get_parking_zones():
             'error': str(e),
             'zones': [],
             'total_zones': 0
+        }), 500
+
+@parking_bp.route('/debug', methods=['GET'])
+def debug_parking_data():
+    """
+    Debug endpoint to check database status and data
+    """
+    try:
+        # Get basic database statistics
+        total_sensors = ParkingSensor.query.count()
+        recent_sensors = ParkingSensor.query.filter(
+            ParkingSensor.last_updated >= datetime.utcnow() - timedelta(days=7)
+        ).count()
+
+        # Get sample data
+        sample_sensors = ParkingSensor.query.limit(5).all()
+
+        # Get status distribution
+        status_stats = {}
+        all_sensors = ParkingSensor.query.all()
+        for sensor in all_sensors:
+            status = sensor.status_description
+            status_stats[status] = status_stats.get(status, 0) + 1
+
+        debug_info = {
+            'success': True,
+            'database_stats': {
+                'total_sensors': total_sensors,
+                'recent_sensors_7days': recent_sensors,
+                'status_distribution': status_stats
+            },
+            'sample_data': [sensor.to_dict() for sensor in sample_sensors],
+            'api_test': {
+                'timestamp': datetime.utcnow().isoformat(),
+                'database_connected': True
+            }
+        }
+
+        print(f"🔍 Debug info: {total_sensors} total sensors, {recent_sensors} recent")
+        return jsonify(debug_info)
+
+    except Exception as e:
+        print(f"❌ Debug endpoint error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'database_connected': False
         }), 500
