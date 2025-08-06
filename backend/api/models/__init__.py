@@ -12,7 +12,7 @@ class ParkingSensor(db.Model):
     __tablename__ = 'parking_sensors'
 
     id = db.Column(db.Integer, primary_key=True)
-    kerbside_id = db.Column(db.String(50), unique=True, nullable=False)
+    kerbside_id = db.Column(db.Integer, unique=True, nullable=False)  # Changed from String to Integer
     zone_number = db.Column(db.String(20), nullable=True)
     status_description = db.Column(db.String(50), nullable=False)
     latitude = db.Column(db.Float, nullable=False)

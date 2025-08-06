@@ -14,7 +14,7 @@ USE fit5120_db;
 -- Create parking sensors table for real-time Melbourne parking data
 CREATE TABLE IF NOT EXISTS parking_sensors (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    kerbside_id VARCHAR(50) UNIQUE NOT NULL,
+    kerbside_id INT UNIQUE NOT NULL,  -- Changed from VARCHAR to INT
     zone_number VARCHAR(20),
     status_description VARCHAR(50) NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
@@ -56,46 +56,46 @@ CREATE TABLE IF NOT EXISTS parking_lots (
 -- Insert real Melbourne parking sensor data (based on actual Melbourne parking zones)
 INSERT IGNORE INTO parking_sensors (kerbside_id, zone_number, status_description, latitude, longitude, status_timestamp) VALUES
 -- Collins Street area
-('63530', '7320', 'Unoccupied', -37.8126, 144.9690, NOW()),
-('50932', '7400', 'Unoccupied', -37.8136, 144.9710, NOW()),
-('53214', '7389', 'Occupied', -37.8127, 144.9630, NOW()),
-('65227', '7401', 'Unoccupied', -37.8112, 144.9660, NOW()),
-('42156', '7320', 'Occupied', -37.8145, 144.9675, NOW()),
+(63530, '7320', 'Unoccupied', -37.8126, 144.9690, NOW()),
+(50932, '7400', 'Unoccupied', -37.8136, 144.9710, NOW()),
+(53214, '7389', 'Occupied', -37.8127, 144.9630, NOW()),
+(65227, '7401', 'Unoccupied', -37.8112, 144.9660, NOW()),
+(42156, '7320', 'Occupied', -37.8145, 144.9675, NOW()),
 
 -- Flinders Street area
-('78934', '7502', 'Unoccupied', -37.8183, 144.9671, NOW()),
-('81205', '7503', 'Unoccupied', -37.8190, 144.9680, NOW()),
-('73648', '7504', 'Occupied', -37.8175, 144.9665, NOW()),
-('92847', '7502', 'Unoccupied', -37.8180, 144.9690, NOW()),
-('56739', '7505', 'Occupied', -37.8185, 144.9655, NOW()),
+(78934, '7502', 'Unoccupied', -37.8183, 144.9671, NOW()),
+(81205, '7503', 'Unoccupied', -37.8190, 144.9680, NOW()),
+(73648, '7504', 'Occupied', -37.8175, 144.9665, NOW()),
+(92847, '7502', 'Unoccupied', -37.8180, 144.9690, NOW()),
+(56739, '7505', 'Occupied', -37.8185, 144.9655, NOW()),
 
 -- Queen Street area
-('34821', '7612', 'Unoccupied', -37.8076, 144.9568, NOW()),
-('47593', '7613', 'Unoccupied', -37.8080, 144.9575, NOW()),
-('68204', '7614', 'Occupied', -37.8072, 144.9560, NOW()),
-('29475', '7612', 'Unoccupied', -37.8085, 144.9580, NOW()),
-('71836', '7615', 'Occupied', -37.8070, 144.9550, NOW()),
+(34821, '7612', 'Unoccupied', -37.8076, 144.9568, NOW()),
+(47593, '7613', 'Unoccupied', -37.8080, 144.9575, NOW()),
+(68204, '7614', 'Occupied', -37.8072, 144.9560, NOW()),
+(29475, '7612', 'Unoccupied', -37.8085, 144.9580, NOW()),
+(71836, '7615', 'Occupied', -37.8070, 144.9550, NOW()),
 
 -- Spencer Street/Docklands area
-('83947', '7725', 'Unoccupied', -37.8184, 144.9525, NOW()),
-('95628', '7726', 'Unoccupied', -37.8190, 144.9520, NOW()),
-('74152', '7727', 'Occupied', -37.8180, 144.9530, NOW()),
-('86394', '7725', 'Unoccupied', -37.8175, 144.9515, NOW()),
-('52817', '7728', 'Occupied', -37.8195, 144.9535, NOW()),
+(83947, '7725', 'Unoccupied', -37.8184, 144.9525, NOW()),
+(95628, '7726', 'Unoccupied', -37.8190, 144.9520, NOW()),
+(74152, '7727', 'Occupied', -37.8180, 144.9530, NOW()),
+(86394, '7725', 'Unoccupied', -37.8175, 144.9515, NOW()),
+(52817, '7728', 'Occupied', -37.8195, 144.9535, NOW()),
 
 -- Swanston Street area
-('41739', '7830', 'Unoccupied', -37.8179, 144.9690, NOW()),
-('63285', '7831', 'Occupied', -37.8170, 144.9685, NOW()),
-('85947', '7832', 'Unoccupied', -37.8185, 144.9695, NOW()),
-('29641', '7830', 'Unoccupied', -37.8175, 144.9680, NOW()),
-('74028', '7833', 'Occupied', -37.8190, 144.9700, NOW()),
+(41739, '7830', 'Unoccupied', -37.8179, 144.9690, NOW()),
+(63285, '7831', 'Occupied', -37.8170, 144.9685, NOW()),
+(85947, '7832', 'Unoccupied', -37.8185, 144.9695, NOW()),
+(29641, '7830', 'Unoccupied', -37.8175, 144.9680, NOW()),
+(74028, '7833', 'Occupied', -37.8190, 144.9700, NOW()),
 
 -- Little Collins Street area
-('91463', '7920', 'Unoccupied', -37.8140, 144.9640, NOW()),
-('67852', '7921', 'Unoccupied', -37.8135, 144.9635, NOW()),
-('38259', '7922', 'Occupied', -37.8145, 144.9645, NOW()),
-('54176', '7920', 'Unoccupied', -37.8130, 144.9630, NOW()),
-('82394', '7923', 'Occupied', -37.8150, 144.9650, NOW());
+(91463, '7920', 'Unoccupied', -37.8140, 144.9640, NOW()),
+(67852, '7921', 'Unoccupied', -37.8135, 144.9635, NOW()),
+(38259, '7922', 'Occupied', -37.8145, 144.9645, NOW()),
+(54176, '7920', 'Unoccupied', -37.8130, 144.9630, NOW()),
+(82394, '7923', 'Occupied', -37.8150, 144.9650, NOW());
 
 -- Insert real Melbourne parking lot data
 INSERT IGNORE INTO parking_lots (name, address, latitude, longitude, total_spaces, available_spaces, price_per_hour, opening_hours, area_type, facilities) VALUES
