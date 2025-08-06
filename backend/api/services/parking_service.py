@@ -96,6 +96,9 @@ class MelbourneParkingService:
                     if not kerbside_id:
                         continue
 
+                    # Convert kerbside_id to string to match database field type
+                    kerbside_id = str(kerbside_id)
+
                     # Parse timestamp
                     timestamp_str = record.get('status_timestamp')
                     status_timestamp = None
