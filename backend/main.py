@@ -22,16 +22,22 @@ def create_app():
     database_url = os.getenv('DATABASE_URL')
 
     # For Render.com PostgreSQL (production)
-    if database_url and database_url.startswith('postgresql'):
-        # Replace postgresql:// with postgresql+psycopg:// to use psycopg driver
-        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://')
+    if database_url and (database_url.startswith('postgresql') or database_url.startswith('postgres')):
+        # Ensure we use psycopg2 explicitly by replacing any postgresql:// with postgresql+psycopg2://
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+        elif database_url.startswith('postgresql://'):
+            database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print(f"🔗 Using PostgreSQL with psycopg2 driver: {database_url.split('@')[0]}@***")
     # For local MySQL (development)
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
             'DATABASE_URL',
             'mysql+pymysql://root:password@mysql/fit5120_db'
         )
+        print("🔗 Using MySQL for development")
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
