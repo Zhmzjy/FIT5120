@@ -23,14 +23,14 @@ def create_app():
 
     # For Render.com PostgreSQL (production)
     if database_url and (database_url.startswith('postgresql') or database_url.startswith('postgres')):
-        # Ensure we use psycopg2 explicitly by replacing any postgresql:// with postgresql+psycopg2://
+        # Use pg8000 driver which is fully compatible with Python 3.13
         if database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+            database_url = database_url.replace('postgres://', 'postgresql+pg8000://', 1)
         elif database_url.startswith('postgresql://'):
-            database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+            database_url = database_url.replace('postgresql://', 'postgresql+pg8000://', 1)
 
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-        print(f"🔗 Using PostgreSQL with psycopg2 driver: {database_url.split('@')[0]}@***")
+        print(f"🔗 Using PostgreSQL with pg8000 driver: {database_url.split('@')[0]}@***")
     # For local MySQL (development)
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
