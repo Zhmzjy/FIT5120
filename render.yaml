@@ -2,7 +2,6 @@ services:
   # PostgreSQL Database
   - type: pserv
     name: melbourne-parking-db
-    env: python
     plan: free
     databaseName: melbourne_parking
     user: melbourne_user
