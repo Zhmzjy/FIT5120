@@ -13,7 +13,7 @@ services:
     env: python
     plan: free
     buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && gunicorn --bind 0.0.0.0:$PORT main:app
+    startCommand: cd backend && gunicorn --bind 0.0.0.0:$PORT app:app
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -22,8 +22,8 @@ services:
           property: connectionString
       - key: FLASK_ENV
         value: production
-      - key: PYTHONPATH
-        value: /opt/render/project/src/backend
+      - key: RENDER
+        value: true
 
   # Frontend Static Site
   - type: web
@@ -34,7 +34,4 @@ services:
     staticPublishPath: frontend/dist
     envVars:
       - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: melbourne-parking-api
-          property: host
+        value: https://melbourne-parking-api.onrender.com
