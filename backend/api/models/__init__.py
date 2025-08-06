@@ -28,8 +28,10 @@ class ParkingSensor(db.Model):
             'zone_number': self.zone_number,
             'status': self.status_description,
             'coordinates': [self.latitude, self.longitude],
+            'latitude': self.latitude,  # Add explicit lat/lng for compatibility
+            'longitude': self.longitude,
             'status_timestamp': self.status_timestamp.isoformat() if self.status_timestamp else None,
-            'last_updated': self.last_updated.isoformat()
+            'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
 
     def __repr__(self):
