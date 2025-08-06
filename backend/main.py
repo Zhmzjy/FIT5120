@@ -78,9 +78,9 @@ if __name__ == '__main__':
     # Create Flask app
     app = create_app()
 
-    # Initialize database only in development mode
-    if not os.getenv('RENDER'):
-        initialize_database(app)
+    # Initialize database in both development and production
+    # Remove the RENDER check to ensure data is always loaded
+    initialize_database(app)
 
     # Get port from environment for production deployment
     port = int(os.getenv('PORT', 5000))
