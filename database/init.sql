@@ -50,7 +50,10 @@ CREATE TABLE IF NOT EXISTS parking_lots (
     opening_hours VARCHAR(100) NOT NULL,
     area_type VARCHAR(50) NOT NULL,
     facilities TEXT,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_location (latitude, longitude),
+    INDEX idx_area (area_type),
+    INDEX idx_availability (available_spaces)
 ) ENGINE=InnoDB;
 
 -- Insert real Melbourne parking sensor data (based on actual Melbourne parking zones)
