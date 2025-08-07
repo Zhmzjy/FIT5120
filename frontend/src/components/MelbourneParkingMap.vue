@@ -1,3 +1,4 @@
+
 <template>
   <div class="melbourne-parking-app">
     <!-- top search bar -->
@@ -82,6 +83,11 @@
           <span class="btn-icon">🗺️</span>
           {{ mapStyle === 'street' ? 'Satellite' : 'Street' }}
         </button>
+        <button @click="showChartModal = true" class="control-btn">
+          <span class="btn-icon">📈</span>
+          Vehicle Growth Trend
+        </button>
+        
       </div>
 
       <!-- load-overlay -->
@@ -140,17 +146,28 @@
     <div v-if="statusMessage" class="status-message" :class="messageType">
       {{ statusMessage }}
     </div>
+
+    <!-- 弹窗遮罩层 -->
+    <div v-if="showChartModal" class="modal-overlay">
+      <div class="modal-content">
+        <button class="close-btn" @click="showChartModal = false">×</button>
+        <!-- 这里是图表内容 -->
+        <CarGrowthChart />
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
-
+import CarGrowthChart from './CarGrowthChart.vue'
 export default {
   name: 'MelbourneParkingMap',
+  components: { CarGrowthChart },
   setup() {
     // 响应式数据
+    const showChartModal = ref(false)
     const selectedParking = ref(null)
     const parkingData = ref([])
     const parkingStats = ref(null)
@@ -532,7 +549,7 @@ export default {
       connectionStatus,
       connectionStatusText,
       mapStyle,
-
+      showChartModal,
       // 方法
       performSearch,
       onSearchInput,
@@ -1051,6 +1068,41 @@ export default {
 :deep(.marker-popup .occupied) {
   color: #dc3545;
   font-weight: bold;
+}
+
+.modal-overlay {
+  position: fixed;
+  left: 0; top: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.35);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-content {
+  background: #fff;
+  padding: 3rem 3rem 2rem 3rem;   
+  border-radius: 16px;
+  min-width: 700px;
+  min-height: 400px;
+  max-width: 96vw;
+  max-height: 90vh;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.18);
+  position: relative;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #666;
 }
 
 /* 响应式设计 */

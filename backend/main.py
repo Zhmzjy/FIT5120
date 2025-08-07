@@ -10,6 +10,7 @@ from api.models import db, ParkingSensor
 from api.routes import register_routes
 from api.services import MelbourneParkingService
 
+
 # Load environment variables
 load_dotenv()
 
@@ -35,7 +36,7 @@ def create_app():
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
             'DATABASE_URL',
-            'mysql+pymysql://root:password@mysql/fit5120_db'
+            'mysql+pymysql://root:123456@localhost/fit5120_db'
         )
         print("🔗 Using MySQL for development")
 

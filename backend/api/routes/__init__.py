@@ -6,6 +6,7 @@ from flask import Blueprint
 from .parking_routes import parking_bp
 from .stats_routes import stats_bp
 from .health_routes import health_bp
+from .car_growth_routes import car_growth_bp
 
 def register_routes(app):
     """
@@ -22,5 +23,7 @@ def register_routes(app):
 
     # Register stats routes
     app.register_blueprint(stats_bp, url_prefix='/api/stats')
+
+    app.register_blueprint(car_growth_bp, url_prefix='/api/car-growth')
 
 __all__ = ['parking_bp', 'stats_bp', 'health_bp', 'register_routes']
