@@ -5,10 +5,9 @@ import os
 import time
 import sys
 
-# Import API modules
-from api.models import db, ParkingSensor
+# Import API modules - import db first to avoid circular imports
+from api.models import db
 from api.routes import register_routes
-from api.services import MelbourneParkingService
 
 # Load environment variables
 load_dotenv()
@@ -18,28 +17,34 @@ def create_app():
     app = Flask(__name__)
     CORS(app)
 
-    # Database configuration with automatic detection
+    # PostgreSQL database configuration
     database_url = os.getenv('DATABASE_URL')
 
-    # For Render.com PostgreSQL (production)
-    if database_url and (database_url.startswith('postgresql') or database_url.startswith('postgres')):
-        # Use pg8000 driver which is fully compatible with Python 3.13
+    if database_url:
+        # Use provided DATABASE_URL (for production/Render)
         if database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql+pg8000://', 1)
-        elif database_url.startswith('postgresql://'):
-            database_url = database_url.replace('postgresql://', 'postgresql+pg8000://', 1)
-
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-        print(f"🔗 Using PostgreSQL with pg8000 driver: {database_url.split('@')[0]}@***")
-    # For local MySQL (development)
+        print(f"🔗 Using provided DATABASE_URL: {database_url.split('@')[0]}@***")
     else:
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-            'DATABASE_URL',
-            'mysql+pymysql://root:password@mysql/fit5120_db'
-        )
-        print("🔗 Using MySQL for development")
+        # Local PostgreSQL configuration
+        db_config = {
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'port': os.getenv('DB_PORT', '5432'),
+            'database': os.getenv('DB_NAME', 'melbourne_parking'),
+            'user': os.getenv('DB_USER', 'melbourne_user'),
+            'password': os.getenv('DB_PASSWORD', 'melbourne_password')
+        }
+
+        database_url = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        print(f"🔗 Using local PostgreSQL: {db_config['user']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_recycle': 300,
+        'pool_pre_ping': True
+    }
 
     # Initialize extensions
     db.init_app(app)
@@ -49,57 +54,29 @@ def create_app():
 
     return app
 
-def initialize_database(app):
-    """Initialize database and fetch initial data"""
+def initialize_database():
+    """Initialize database tables if they don't exist"""
     try:
-        with app.app_context():
-            # Wait for database connection
-            max_retries = 30
-            for i in range(max_retries):
-                try:
-                    db.create_all()
-                    print("✅ Database connection successful!")
-                    break
-                except Exception as e:
-                    print(f"Database connection attempt {i+1}/{max_retries} failed: {e}")
-                    if i == max_retries - 1:
-                        raise
-                    time.sleep(2)
+        # Test database connection
+        with db.engine.connect() as conn:
+            print("✅ Database connection successful")
 
-            # Initial data fetch from Melbourne Government API
-            print("🔄 Fetching initial parking data from Melbourne Government API...")
-            success = MelbourneParkingService.update_database()
-
-            if success:
-                sensor_count = ParkingSensor.query.count()
-                print(f"✅ Successfully loaded {sensor_count} parking sensors")
-            else:
-                print("⚠️  Failed to fetch API data, using database defaults")
+        # Note: Tables already exist from our import script
+        # This is just for compatibility
+        print("📊 Database tables are ready")
 
     except Exception as e:
-        print(f"❌ Error initializing database: {e}")
+        print(f"❌ Database initialization failed: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':
-    print("🚀 Starting Melbourne Parking API Server...")
-
-    # Create Flask app
     app = create_app()
 
-    # Initialize database in both development and production
-    # Remove the RENDER check to ensure data is always loaded
-    initialize_database(app)
+    with app.app_context():
+        initialize_database()
 
-    # Get port from environment for production deployment
-    port = int(os.getenv('PORT', 5000))
-    debug_mode = os.getenv('FLASK_ENV') != 'production'
+    port = int(os.getenv('PORT', 5001))
+    debug = os.getenv('FLASK_ENV') == 'development'
 
-    print("📍 API Endpoints Available:")
-    print("   - Health Check: /health")
-    print("   - Live Parking: /api/parking/live")
-    print("   - Search: /api/parking/search")
-    print("   - Statistics: /api/stats")
-    print("   - Update Data: /api/parking/update")
-
-    print("🌐 Starting Flask application...")
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    print(f"🚀 Starting Melbourne Parking API on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=debug)

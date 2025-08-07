@@ -1,292 +1,386 @@
 """
 Parking Routes for Melbourne Parking API
+Updated to use PostgreSQL with Suburb and OffStreetParking models
 """
 
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
-from ..models import ParkingSensor, db
-from ..services import MelbourneParkingService
+from sqlalchemy import func, text
+from ..models import db, Suburb, OffStreetParking, ParkingSpaces, OnStreetSensors
 
 # Create parking routes blueprint
 parking_bp = Blueprint('parking', __name__)
 
-@parking_bp.route('/live', methods=['GET'])
-def get_live_parking():
+@parking_bp.route('/facilities', methods=['GET'])
+def get_parking_facilities():
     """
-    Get live parking data from sensors
+    Get all parking facilities
 
     Query Parameters:
+        suburb (str): Filter by suburb name
+        postcode (str): Filter by postcode
         lat (float): Latitude for location-based filtering
         lng (float): Longitude for location-based filtering
         radius (float): Search radius in km (default: 2.0)
-        status (str): Filter by status ('all', 'available', 'occupied')
+        limit (int): Limit number of results (default: 100)
     """
     try:
-        # Get query parameters
+        query = OffStreetParking.query
+
+        # Filter by suburb
+        suburb_filter = request.args.get('suburb')
+        if suburb_filter:
+            query = query.filter(OffStreetParking.suburb_name.ilike(f'%{suburb_filter}%'))
+
+        # Filter by postcode
+        postcode_filter = request.args.get('postcode')
+        if postcode_filter:
+            query = query.filter(OffStreetParking.postcode == postcode_filter)
+
+        # Location-based filtering
         lat = request.args.get('lat', type=float)
         lng = request.args.get('lng', type=float)
         radius = request.args.get('radius', default=2.0, type=float)
-        status_filter = request.args.get('status', default='all')
 
-        query = ParkingSensor.query
-
-        # Filter by status if specified
-        if status_filter != 'all':
-            if status_filter.lower() == 'available':
-                query = query.filter(ParkingSensor.status_description == 'Unoccupied')
-            elif status_filter.lower() == 'occupied':
-                query = query.filter(ParkingSensor.status_description == 'Occupied')
-
-        # If location provided, filter by radius (simplified distance calculation)
         if lat and lng:
-            lat_range = radius / 111.0  # Rough conversion: 1 degree ≈ 111 km
-            lng_range = radius / (111.0 * abs(lat / 90.0))  # Adjust for latitude
-
-            query = query.filter(
-                ParkingSensor.latitude.between(lat - lat_range, lat + lat_range),
-                ParkingSensor.longitude.between(lng - lng_range, lng + lng_range)
+            # Simple distance calculation (for small distances)
+            distance_query = func.sqrt(
+                func.power(OffStreetParking.latitude - lat, 2) +
+                func.power(OffStreetParking.longitude - lng, 2)
             )
-
-        # Get recent data (last 7 days instead of 24 hours to ensure we have data)
-        week_ago = datetime.utcnow() - timedelta(days=7)
-        query = query.filter(ParkingSensor.last_updated >= week_ago)
-
-        sensors = query.limit(200).all()
-
-        # Debug: Print database status
-        total_sensors = ParkingSensor.query.count()
-        print(f"🔍 Database status: {total_sensors} total sensors in database")
-        print(f"🔍 Recent sensors (7 days): {len(sensors)} sensors found")
-
-        # If no recent data, get any available data
-        if not sensors:
-            print("⚠️ No recent data found, getting all available data...")
-            query = ParkingSensor.query
-            if status_filter != 'all':
-                if status_filter.lower() == 'available':
-                    query = query.filter(ParkingSensor.status_description == 'Unoccupied')
-                elif status_filter.lower() == 'occupied':
-                    query = query.filter(ParkingSensor.status_description == 'Occupied')
-            sensors = query.limit(200).all()
-            print(f"🔍 Fallback query returned: {len(sensors)} sensors")
-
-        # Debug: Print sample data
-        if sensors:
-            sample = sensors[0]
-            print(f"🔍 Sample sensor: ID={sample.kerbside_id}, Status={sample.status_description}, Updated={sample.last_updated}")
+            # Convert to approximate km (rough conversion)
+            query = query.filter(distance_query <= radius / 111.0)
+            query = query.order_by(distance_query)
         else:
-            print("❌ No sensors found in database!")
+            query = query.order_by(OffStreetParking.parking_spaces.desc())
+
+        # Limit results
+        limit = request.args.get('limit', default=100, type=int)
+        facilities = query.limit(limit).all()
 
         return jsonify({
-            'success': True,
-            'count': len(sensors),
-            'data': [sensor.to_dict() for sensor in sensors],
-            'filters': {
-                'status': status_filter,
-                'location': [lat, lng] if lat and lng else None,
-                'radius': radius
-            },
-            'last_updated': datetime.utcnow().isoformat()
+            'status': 'success',
+            'count': len(facilities),
+            'data': [facility.to_dict() for facility in facilities]
         })
 
     except Exception as e:
-        print(f"Error getting live parking data: {e}")
         return jsonify({
-            'success': False,
-            'error': str(e),
-            'count': 0,
-            'data': []
+            'status': 'error',
+            'message': f'Failed to fetch parking facilities: {str(e)}'
+        }), 500
+
+@parking_bp.route('/facilities/geojson', methods=['GET'])
+def get_parking_facilities_geojson():
+    """Get parking facilities in GeoJSON format for map display"""
+    try:
+        query = OffStreetParking.query
+
+        # Apply same filters as regular facilities endpoint
+        suburb_filter = request.args.get('suburb')
+        if suburb_filter:
+            query = query.filter(OffStreetParking.suburb_name.ilike(f'%{suburb_filter}%'))
+
+        postcode_filter = request.args.get('postcode')
+        if postcode_filter:
+            query = query.filter(OffStreetParking.postcode == postcode_filter)
+
+        facilities = query.all()
+
+        geojson = {
+            'type': 'FeatureCollection',
+            'features': [facility.to_geojson_feature() for facility in facilities]
+        }
+
+        return jsonify(geojson)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to fetch GeoJSON data: {str(e)}'
+        }), 500
+
+@parking_bp.route('/facilities/<int:facility_id>', methods=['GET'])
+def get_parking_facility(facility_id):
+    """Get specific parking facility details"""
+    try:
+        facility = OffStreetParking.query.get_or_404(facility_id)
+
+        return jsonify({
+            'status': 'success',
+            'data': facility.to_dict()
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to fetch facility: {str(e)}'
+        }), 500
+
+@parking_bp.route('/suburbs', methods=['GET'])
+def get_suburbs():
+    """
+    Get all suburbs with parking data
+
+    Query Parameters:
+        name (str): Filter by suburb name
+        postcode (str): Filter by postcode
+        with_parking (bool): Only suburbs with parking facilities
+    """
+    try:
+        query = Suburb.query
+
+        # Filter by name
+        name_filter = request.args.get('name')
+        if name_filter:
+            query = query.filter(Suburb.suburb_name.ilike(f'%{name_filter}%'))
+
+        # Filter by postcode
+        postcode_filter = request.args.get('postcode')
+        if postcode_filter:
+            query = query.filter(Suburb.postcode == postcode_filter)
+
+        # Only suburbs with parking facilities
+        with_parking = request.args.get('with_parking', type=bool)
+        if with_parking:
+            query = query.join(OffStreetParking).group_by(Suburb.id)
+
+        suburbs = query.order_by(Suburb.suburb_name).all()
+
+        return jsonify({
+            'status': 'success',
+            'count': len(suburbs),
+            'data': [suburb.to_dict() for suburb in suburbs]
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to fetch suburbs: {str(e)}'
+        }), 500
+
+@parking_bp.route('/suburbs/<int:suburb_id>/facilities', methods=['GET'])
+def get_suburb_facilities(suburb_id):
+    """Get all parking facilities in a specific suburb"""
+    try:
+        suburb = Suburb.query.get_or_404(suburb_id)
+        facilities = OffStreetParking.query.filter_by(suburb_id=suburb_id).all()
+
+        return jsonify({
+            'status': 'success',
+            'suburb': suburb.to_dict(),
+            'facilities_count': len(facilities),
+            'facilities': [facility.to_dict() for facility in facilities]
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to fetch suburb facilities: {str(e)}'
         }), 500
 
 @parking_bp.route('/search', methods=['GET'])
 def search_parking():
     """
-    Search parking by postcode or suburb name
+    Search parking facilities by address or name
 
     Query Parameters:
-        q (str): Search query (postcode or suburb name)
-        status (str): Filter by status ('all', 'available', 'occupied')
+        q (str): Search query
+        limit (int): Limit results (default: 20)
     """
     try:
-        query_text = request.args.get('q', '').strip()
-        status_filter = request.args.get('status', default='all')
-
-        if not query_text:
+        search_query = request.args.get('q', '').strip()
+        if not search_query:
             return jsonify({
-                'success': False,
-                'error': 'Search query parameter "q" is required',
-                'count': 0,
-                'data': []
+                'status': 'error',
+                'message': 'Search query is required'
             }), 400
 
-        # For MVP, return parking data near Melbourne CBD
-        # In full implementation, you'd geocode the search term first
-        cbd_lat, cbd_lng = -37.8136, 144.9631
+        limit = request.args.get('limit', default=20, type=int)
 
-        # Get parking sensors near Melbourne CBD
-        lat_range = 0.05  # Roughly 5km radius
-        lng_range = 0.05
-
-        query = ParkingSensor.query.filter(
-            ParkingSensor.latitude.between(cbd_lat - lat_range, cbd_lat + lat_range),
-            ParkingSensor.longitude.between(cbd_lng - lng_range, cbd_lng + lng_range)
-        )
-
-        # Apply status filter
-        if status_filter != 'all':
-            if status_filter.lower() == 'available':
-                query = query.filter(ParkingSensor.status_description == 'Unoccupied')
-            elif status_filter.lower() == 'occupied':
-                query = query.filter(ParkingSensor.status_description == 'Occupied')
-
-        sensors = query.limit(100).all()
+        # Search in building address
+        facilities = OffStreetParking.query.filter(
+            OffStreetParking.building_address.ilike(f'%{search_query}%')
+        ).order_by(OffStreetParking.parking_spaces.desc()).limit(limit).all()
 
         return jsonify({
-            'success': True,
-            'query': query_text,
-            'count': len(sensors),
-            'data': [sensor.to_dict() for sensor in sensors],
-            'center': [cbd_lat, cbd_lng],
-            'search_area': 'Melbourne CBD (5km radius)',
-            'status_filter': status_filter
+            'status': 'success',
+            'query': search_query,
+            'count': len(facilities),
+            'data': [facility.to_dict() for facility in facilities]
         })
 
     except Exception as e:
-        print(f"Error searching parking: {e}")
         return jsonify({
-            'success': False,
-            'error': str(e),
-            'count': 0,
-            'data': []
+            'status': 'error',
+            'message': f'Search failed: {str(e)}'
         }), 500
 
-@parking_bp.route('/update', methods=['POST'])
-def update_parking_data():
+# Legacy endpoint for compatibility
+@parking_bp.route('/live', methods=['GET'])
+def get_live_parking():
     """
-    Manually trigger parking data update from Melbourne Government API
+    Legacy endpoint - now returns static parking facilities data
+    Kept for backwards compatibility
     """
     try:
-        success = MelbourneParkingService.update_database()
+        # Get first 50 facilities as "live" data
+        facilities = OffStreetParking.query.limit(50).all()
 
-        if success:
-            count = ParkingSensor.query.count()
-            return jsonify({
-                'success': True,
-                'message': 'Parking data updated successfully',
-                'total_sensors': count,
-                'updated_at': datetime.utcnow().isoformat()
+        # Convert to legacy format
+        legacy_data = []
+        for facility in facilities:
+            legacy_data.append({
+                'id': facility.id,
+                'kerbside_id': facility.id,  # Use facility ID as kerbside_id
+                'zone_number': f"ZONE_{facility.id}",
+                'status': 'available',  # Default status
+                'coordinates': [float(facility.latitude), float(facility.longitude)],
+                'latitude': float(facility.latitude),
+                'longitude': float(facility.longitude),
+                'status_timestamp': datetime.utcnow().isoformat(),
+                'last_updated': datetime.utcnow().isoformat(),
+                'parking_spaces': facility.parking_spaces,
+                'address': facility.building_address
             })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to update parking data from API',
-                'message': 'Check logs for detailed error information'
-            }), 500
-
-    except Exception as e:
-        print(f"Error updating parking data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'message': 'Unexpected error during data update'
-        }), 500
-
-@parking_bp.route('/zones', methods=['GET'])
-def get_parking_zones():
-    """
-    Get list of all parking zones with basic statistics
-    """
-    try:
-        zones_data = {}
-        sensors = ParkingSensor.query.all()
-
-        for sensor in sensors:
-            zone = sensor.zone_number or 'Unknown'
-            if zone not in zones_data:
-                zones_data[zone] = {
-                    'zone_number': zone,
-                    'total_spaces': 0,
-                    'available': 0,
-                    'occupied': 0,
-                    'sensors': []
-                }
-
-            zones_data[zone]['total_spaces'] += 1
-            zones_data[zone]['sensors'].append(sensor.kerbside_id)
-
-            if sensor.status_description == 'Unoccupied':
-                zones_data[zone]['available'] += 1
-            elif sensor.status_description == 'Occupied':
-                zones_data[zone]['occupied'] += 1
-
-        # Calculate occupancy rates
-        for zone_data in zones_data.values():
-            if zone_data['total_spaces'] > 0:
-                zone_data['occupancy_rate'] = round(
-                    (zone_data['occupied'] / zone_data['total_spaces'] * 100), 2
-                )
-            else:
-                zone_data['occupancy_rate'] = 0
 
         return jsonify({
-            'success': True,
-            'zones': list(zones_data.values()),
-            'total_zones': len(zones_data),
-            'last_updated': datetime.utcnow().isoformat()
+            'status': 'success',
+            'count': len(legacy_data),
+            'data': legacy_data,
+            'message': 'Legacy endpoint - showing parking facilities as live data'
         })
 
     except Exception as e:
-        print(f"Error getting parking zones: {e}")
         return jsonify({
-            'success': False,
-            'error': str(e),
-            'zones': [],
-            'total_zones': 0
+            'status': 'error',
+            'message': f'Failed to fetch live parking data: {str(e)}'
         }), 500
 
-@parking_bp.route('/debug', methods=['GET'])
-def debug_parking_data():
+@parking_bp.route('/combined', methods=['GET'])
+def get_combined_parking():
     """
-    Debug endpoint to check database status and data
+    Get combined parking data from both on-street sensors and off-street facilities
+    
+    Query Parameters:
+        parking_type (str): Filter by parking type ('on-street', 'off-street', 'all')
+        status (str): Filter by status ('available', 'occupied', 'all')
+        suburb (str): Filter by suburb name
+        zone (int): Filter by zone number
+        lat (float): Latitude for location-based filtering
+        lng (float): Longitude for location-based filtering
+        radius (float): Search radius in km (default: 2.0)
+        limit (int): Limit number of results (default: 200)
     """
     try:
-        # Get basic database statistics
-        total_sensors = ParkingSensor.query.count()
-        recent_sensors = ParkingSensor.query.filter(
-            ParkingSensor.last_updated >= datetime.utcnow() - timedelta(days=7)
-        ).count()
-
-        # Get sample data
-        sample_sensors = ParkingSensor.query.limit(5).all()
-
-        # Get status distribution
-        status_stats = {}
-        all_sensors = ParkingSensor.query.all()
-        for sensor in all_sensors:
-            status = sensor.status_description
-            status_stats[status] = status_stats.get(status, 0) + 1
-
-        debug_info = {
+        from ..models import OnStreetSensors
+        
+        parking_type = request.args.get('parking_type', 'all')
+        status_filter = request.args.get('status', 'all')
+        suburb_filter = request.args.get('suburb')
+        zone_filter = request.args.get('zone', type=int)
+        lat = request.args.get('lat', type=float)
+        lng = request.args.get('lng', type=float)
+        radius = request.args.get('radius', default=2.0, type=float)
+        limit = request.args.get('limit', default=200, type=int)
+        
+        combined_data = []
+        
+        # Get on-street parking data
+        if parking_type in ['all', 'on-street']:
+            on_street_query = OnStreetSensors.query
+            
+            # Apply filters
+            if status_filter == 'available':
+                on_street_query = on_street_query.filter(OnStreetSensors.status_description == 'Unoccupied')
+            elif status_filter == 'occupied':
+                on_street_query = on_street_query.filter(OnStreetSensors.status_description == 'Present')
+            
+            if suburb_filter:
+                on_street_query = on_street_query.filter(OnStreetSensors.suburb_name.ilike(f'%{suburb_filter}%'))
+            
+            if zone_filter:
+                on_street_query = on_street_query.filter(OnStreetSensors.zone_number == zone_filter)
+            
+            # Location-based filtering
+            if lat and lng:
+                lat_diff = radius / 111.0
+                lng_diff = radius / (111.0 * abs(lat) / 90.0)
+                on_street_query = on_street_query.filter(
+                    OnStreetSensors.latitude.between(lat - lat_diff, lat + lat_diff),
+                    OnStreetSensors.longitude.between(lng - lng_diff, lng + lng_diff)
+                )
+            
+            on_street_sensors = on_street_query.limit(limit // 2).all()
+            
+            # Convert to unified format
+            for sensor in on_street_sensors:
+                combined_data.append({
+                    'id': sensor.id,
+                    'kerbside_id': sensor.kerbside_id,
+                    'zone_number': sensor.zone_number,
+                    'status': 'available' if sensor.status_description == 'Unoccupied' else 'occupied',
+                    'parking_type': 'on-street',
+                    'coordinates': [float(sensor.latitude), float(sensor.longitude)],
+                    'latitude': float(sensor.latitude),
+                    'longitude': float(sensor.longitude),
+                    'status_timestamp': sensor.status_timestamp.isoformat() if sensor.status_timestamp else None,
+                    'last_updated': sensor.last_updated.isoformat() if sensor.last_updated else None,
+                    'suburb_name': sensor.suburb_name,
+                    'postcode': sensor.postcode,
+                    'parking_spaces': 1  # Each sensor represents one parking space
+                })
+        
+        # Get off-street parking data
+        if parking_type in ['all', 'off-street']:
+            off_street_query = OffStreetParking.query
+            
+            # Apply filters
+            if suburb_filter:
+                off_street_query = off_street_query.filter(OffStreetParking.suburb_name.ilike(f'%{suburb_filter}%'))
+            
+            # Location-based filtering
+            if lat and lng:
+                lat_diff = radius / 111.0
+                lng_diff = radius / (111.0 * abs(lat) / 90.0)
+                off_street_query = off_street_query.filter(
+                    OffStreetParking.latitude.between(lat - lat_diff, lat + lat_diff),
+                    OffStreetParking.longitude.between(lng - lng_diff, lng + lng_diff)
+                )
+            
+            off_street_facilities = off_street_query.limit(limit // 2).all()
+            
+            # Convert to unified format
+            for facility in off_street_facilities:
+                combined_data.append({
+                    'id': facility.id,
+                    'kerbside_id': facility.id,
+                    'zone_number': f"FACILITY_{facility.id}",
+                    'status': 'available',  # Off-street facilities are generally available
+                    'parking_type': 'off-street',
+                    'coordinates': [float(facility.latitude), float(facility.longitude)],
+                    'latitude': float(facility.latitude),
+                    'longitude': float(facility.longitude),
+                    'status_timestamp': datetime.utcnow().isoformat(),
+                    'last_updated': facility.updated_at.isoformat() if facility.updated_at else datetime.utcnow().isoformat(),
+                    'suburb_name': facility.suburb_name,
+                    'postcode': facility.postcode,
+                    'parking_spaces': facility.parking_spaces,
+                    'address': facility.building_address
+                })
+        
+        # Apply final limit and sort by last_updated
+        combined_data = sorted(combined_data, key=lambda x: x['last_updated'], reverse=True)[:limit]
+        
+        return jsonify({
             'success': True,
-            'database_stats': {
-                'total_sensors': total_sensors,
-                'recent_sensors_7days': recent_sensors,
-                'status_distribution': status_stats
-            },
-            'sample_data': [sensor.to_dict() for sensor in sample_sensors],
-            'api_test': {
-                'timestamp': datetime.utcnow().isoformat(),
-                'database_connected': True
-            }
-        }
-
-        print(f"🔍 Debug info: {total_sensors} total sensors, {recent_sensors} recent")
-        return jsonify(debug_info)
-
+            'count': len(combined_data),
+            'data': combined_data,
+            'message': f'Found {len(combined_data)} parking spaces'
+        })
+        
     except Exception as e:
-        print(f"❌ Debug endpoint error: {e}")
         return jsonify({
             'success': False,
-            'error': str(e),
-            'database_connected': False
+            'error': f'Failed to fetch combined parking data: {str(e)}'
         }), 500

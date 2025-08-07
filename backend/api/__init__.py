@@ -12,7 +12,9 @@ from flask import Blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 # Import routes to register them with the blueprint
-from .routes import parking_routes, stats_routes, health_routes
+# Routes will be imported after db is initialized to avoid circular imports
+
+# Export db from models - will be imported after initialization
 
 __version__ = '1.0.0'
 __author__ = 'FIT5120 Team'

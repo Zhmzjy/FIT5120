@@ -15,7 +15,32 @@
         <button v-if="searchQuery" @click="clearSearch" class="clear-btn">×</button>
       </div>
 
-      <!-- 过滤按钮 -->
+      <!-- 停车类型筛选按钮 -->
+      <div class="parking-type-buttons">
+        <button
+          @click="setParkingTypeFilter('all')"
+          :class="['type-btn', { active: parkingTypeFilter === 'all' }]"
+        >
+          <span class="btn-icon">🅿️</span>
+          All Parking
+        </button>
+        <button
+          @click="setParkingTypeFilter('on-street')"
+          :class="['type-btn', { active: parkingTypeFilter === 'on-street' }]"
+        >
+          <span class="btn-icon">🚗</span>
+          On-Street
+        </button>
+        <button
+          @click="setParkingTypeFilter('off-street')"
+          :class="['type-btn', { active: parkingTypeFilter === 'off-street' }]"
+        >
+          <span class="btn-icon">🏢</span>
+          Off-Street
+        </button>
+      </div>
+
+      <!-- 状态过滤按钮 -->
       <div class="filter-buttons">
         <button
           @click="setStatusFilter('all')"
@@ -41,19 +66,19 @@
     <!-- 统计信息栏 -->
     <div class="stats-bar" v-if="parkingStats">
       <div class="stat-item">
-        <span class="stat-number">{{ parkingStats.total_sensors }}</span>
-        <span class="stat-label">Total Sensors</span>
+        <span class="stat-number">{{ parkingStats.total_parking_spaces || parkingStats.total_sensors }}</span>
+        <span class="stat-label">Total Spaces</span>
       </div>
-      <div class="stat-item available">
-        <span class="stat-number">{{ parkingStats.available }}</span>
-        <span class="stat-label">Available</span>
+      <div class="stat-item on-street">
+        <span class="stat-number">{{ parkingStats.on_street_spaces || parkingStats.available }}</span>
+        <span class="stat-label">On-Street</span>
       </div>
-      <div class="stat-item occupied">
-        <span class="stat-number">{{ parkingStats.occupied }}</span>
-        <span class="stat-label">Occupied</span>
+      <div class="stat-item off-street">
+        <span class="stat-number">{{ parkingStats.off_street_spaces || parkingStats.occupied }}</span>
+        <span class="stat-label">Off-Street</span>
       </div>
       <div class="stat-item">
-        <span class="stat-number">{{ parkingStats.occupancy_rate }}%</span>
+        <span class="stat-number">{{ parkingStats.on_street_occupancy_rate || parkingStats.occupancy_rate }}%</span>
         <span class="stat-label">Occupancy Rate</span>
       </div>
     </div>
@@ -91,51 +116,6 @@
       </div>
     </div>
 
-    <!-- parking info dashboard -->
-    <div v-if="selectedParking" class="details-panel" :class="{ visible: selectedParking }">
-      <div class="panel-header">
-        <h3 class="panel-title">
-          Space {{ selectedParking.kerbside_id || selectedParking.id }}
-        </h3>
-        <button @click="closePanel" class="close-btn">✕</button>
-      </div>
-
-      <div class="panel-content">
-        <div class="status-indicator" :class="getStatusClass(selectedParking.status)">
-          <span class="status-dot"></span>
-          <span class="status-text">{{ getStatusText(selectedParking.status) }}</span>
-        </div>
-
-        <div class="details-grid">
-          <div class="detail-item" v-if="selectedParking.zone_number">
-            <span class="detail-label">Zone</span>
-            <span class="detail-value">{{ selectedParking.zone_number }}</span>
-          </div>
-
-          <div class="detail-item">
-            <span class="detail-label">Location</span>
-            <span class="detail-value">{{ formatCoordinates(selectedParking.coordinates) }}</span>
-          </div>
-
-          <div class="detail-item" v-if="selectedParking.last_updated">
-            <span class="detail-label">Last Update</span>
-            <span class="detail-value">{{ formatTimestamp(selectedParking.last_updated) }}</span>
-          </div>
-        </div>
-
-        <div class="action-buttons">
-          <button @click="getDirections" class="action-btn primary">
-            <span class="btn-icon">🧭</span>
-            Get Directions
-          </button>
-          <button @click="shareLocation" class="action-btn secondary">
-            <span class="btn-icon">📤</span>
-            Share Location
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- statusMessage -->
     <div v-if="statusMessage" class="status-message" :class="messageType">
       {{ statusMessage }}
@@ -146,6 +126,16 @@
 <script>
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
+import L from 'leaflet'
+
+// 修复Leaflet默认图标问题
+import 'leaflet/dist/leaflet.css'
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+})
 
 export default {
   name: 'MelbourneParkingMap',
@@ -156,6 +146,7 @@ export default {
     const parkingStats = ref(null)
     const searchQuery = ref('')
     const statusFilter = ref('all')
+    const parkingTypeFilter = ref('all') // 新增：停车类型筛选
     const isLoading = ref(false)
     const isSearching = ref(false)
     const statusMessage = ref('')
@@ -171,9 +162,9 @@ export default {
     let userMarker = null
     let refreshInterval = null
 
-    // API配置 - 自动适应开发和生产环境
+    // API配置 - 修正API端口
     const API_BASE = import.meta.env.VITE_API_BASE_URL ||
-                     (import.meta.env.DEV ? 'http://localhost:5001' : '')
+                     (import.meta.env.DEV ? 'http://localhost:8888' : '')
 
     // 计算属性
     const connectionStatusText = computed(() => {
@@ -188,12 +179,10 @@ export default {
     // 初始化地图
     const initMap = async () => {
       try {
-        if (typeof window.L === 'undefined') {
-          throw new Error('Leaflet library not loaded')
-        }
+        console.log('🗺️ Initializing map...')
 
         // 创建地图，中心为墨尔本CBD
-        map = window.L.map('melbourne-map', {
+        map = L.map('melbourne-map', {
           center: [-37.8136, 144.9631],
           zoom: 14,
           zoomControl: false,
@@ -204,7 +193,7 @@ export default {
         updateMapStyle()
 
         // 创建标记图层
-        markersLayer = window.L.layerGroup().addTo(map)
+        markersLayer = L.layerGroup().addTo(map)
 
         console.log('🗺️ Map initialized successfully')
 
@@ -216,101 +205,217 @@ export default {
 
       } catch (error) {
         console.error('❌ Map initialization failed:', error)
-        showMessage('Failed to initialize map', 'error')
+        showMessage('Failed to initialize map: ' + error.message, 'error')
       }
+    }
+
+    // 更新地图样式
+    const updateMapStyle = () => {
+      if (!map) return
+
+      // 移除现有图层
+      map.eachLayer((layer) => {
+        if (layer._url) { // 这是瓦片图层
+          map.removeLayer(layer)
+        }
+      })
+
+      // 添加新的瓦片图层
+      const tileLayer = mapStyle.value === 'street' ?
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors'
+        }) :
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: '© Esri'
+        })
+
+      tileLayer.addTo(map)
     }
 
     // 获取实时停车数据
     const fetchParkingData = async (searchParams = {}) => {
       try {
         isLoading.value = true
-        connectionStatus.value = 'connecting'
-        loadingMessage.value = 'Fetching real-time parking data...'
+        loadingMessage.value = 'Loading parking data...'
 
-        const params = {
-          status: statusFilter.value !== 'all' ? statusFilter.value : undefined,
+        console.log('📡 Fetching parking data from:', `${API_BASE}/api/parking/search`)
+
+        const params = new URLSearchParams({
+          limit: '500',
           ...searchParams
-        }
-
-        const response = await axios.get(`${API_BASE}/api/parking/live`, {
-          params,
-          timeout: 15000
         })
 
-        if (response.data.success) {
-          parkingData.value = response.data.data
-          updateMapMarkers()
-          connectionStatus.value = 'connected'
-          showMessage(`Found ${response.data.count} parking spaces`, 'success')
-        } else {
-          throw new Error(response.data.error || 'Failed to fetch parking data')
-        }
+        const response = await axios.get(`${API_BASE}/api/parking/search?${params}`)
+        parkingData.value = response.data
+
+        console.log(`✅ Loaded ${parkingData.value.length} parking facilities`)
+        updateMarkers()
+        showMessage(`Loaded ${parkingData.value.length} parking facilities`, 'success')
 
       } catch (error) {
         console.error('❌ Error fetching parking data:', error)
-        connectionStatus.value = 'disconnected'
-        showMessage('Unable to fetch real-time data. Please try again.', 'error')
-
-        // 使用演示数据作为后备
-        parkingData.value = getDemoData()
-        updateMapMarkers()
-
+        showMessage('Failed to load parking data', 'error')
       } finally {
         isLoading.value = false
       }
     }
 
-    // 获取停车统计
+    // 获取停车统计信息
     const fetchParkingStats = async () => {
       try {
-        const response = await axios.get(`${API_BASE}/api/stats`)
-        if (response.data.success) {
-          parkingStats.value = response.data.stats
-        }
+        const response = await axios.get(`${API_BASE}/api/parking/stats`)
+        parkingStats.value = response.data
+        console.log('📊 Parking stats loaded:', parkingStats.value)
       } catch (error) {
-        console.error('❌ Error fetching stats:', error)
+        console.error('❌ Error fetching parking stats:', error)
       }
     }
 
     // 更新地图标记
-    const updateMapMarkers = () => {
-      if (!markersLayer || !map) return
+    const updateMarkers = () => {
+      if (!map || !markersLayer) return
 
       // 清除现有标记
       markersLayer.clearLayers()
 
-      // 添加停车标记
-      parkingData.value.forEach(parking => {
-        const [lat, lng] = parking.coordinates
-
-        // 根据状态创建自定义图标
-        const isAvailable = parking.status === 'Unoccupied'
-        const iconClass = isAvailable ? 'available' : 'occupied'
-        const iconEmoji = isAvailable ? '🅿️' : '🚫'
-
-        const customIcon = window.L.divIcon({
-          html: `<div class="parking-marker ${iconClass}">
-                   <span class="marker-icon">${iconEmoji}</span>
-                 </div>`,
-          className: 'custom-marker-container',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
-        })
-
-        const marker = window.L.marker([lat, lng], { icon: customIcon })
-          .addTo(markersLayer)
-          .on('click', () => selectParking(parking))
-
-        // 添加弹出窗口
-        const popupContent = `
-          <div class="marker-popup">
-            <strong>Space ${parking.kerbside_id || parking.id}</strong><br>
-            Status: <span class="${iconClass}">${parking.status}</span><br>
-            ${parking.zone_number ? `Zone: ${parking.zone_number}` : ''}
-          </div>
-        `
-        marker.bindPopup(popupContent)
+      // 过滤数据
+      const filteredData = parkingData.value.filter(item => {
+        if (parkingTypeFilter.value !== 'all') {
+          // 根据停车类型过滤
+          return true // 暂时显示所有数据
+        }
+        return true
       })
+
+      // 添加停车场针脚标记
+      filteredData.forEach(parking => {
+        if (parking.latitude && parking.longitude) {
+          // 根据停车位数量确定标记颜色
+          const spaces = parking.parking_spaces || 0
+          let pinColor = '#28a745' // 默认绿色
+
+          if (spaces > 500) {
+            pinColor = '#dc3545' // 红色 - 大型停车场
+          } else if (spaces > 100) {
+            pinColor = '#fd7e14' // 橙色 - 中型停车场
+          } else if (spaces > 50) {
+            pinColor = '#ffc107' // 黄色 - 小型停车场
+          }
+          // 50以下保持绿色
+
+          // 创建自定义针脚图标
+          const pinIcon = L.divIcon({
+            html: `
+              <div class="custom-pin" style="--pin-color: ${pinColor}">
+                <div class="pin-head">
+                  <div class="pin-content">
+                    <span class="parking-icon">🅿️</span>
+                    <span class="spaces-count">${spaces}</span>
+                  </div>
+                </div>
+                <div class="pin-point"></div>
+              </div>
+            `,
+            className: 'custom-pin-container',
+            iconSize: [40, 50],
+            iconAnchor: [20, 50],
+            popupAnchor: [0, -50]
+          })
+
+          const marker = L.marker([parking.latitude, parking.longitude], {
+            icon: pinIcon
+          })
+
+          // 创建详细的弹出窗口内容
+          const popupContent = `
+            <div class="parking-popup">
+              <div class="popup-header">
+                <h4 class="popup-title">🅿️ 停车场信息</h4>
+                <div class="popup-badge" style="background-color: ${pinColor}">
+                  ${spaces} 位
+                </div>
+              </div>
+
+              <div class="popup-body">
+                <div class="info-row">
+                  <span class="info-label">📍 地址:</span>
+                  <span class="info-value">${parking.building_address || '未知地址'}</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">🏢 类型:</span>
+                  <span class="info-value">${parking.parking_type || '未知'}</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">🗺️ 区域:</span>
+                  <span class="info-value">${parking.clue_small_area || '未知区域'}</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">📊 停车位:</span>
+                  <span class="info-value spaces-highlight">${spaces} 个</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">🧭 坐标:</span>
+                  <span class="info-value">${parseFloat(parking.latitude).toFixed(4)}, ${parseFloat(parking.longitude).toFixed(4)}</span>
+                </div>
+              </div>
+
+              <div class="popup-actions">
+                <button onclick="getDirections(${parking.latitude}, ${parking.longitude})" class="popup-btn primary">
+                  🧭 导航
+                </button>
+                <button onclick="selectParkingDetails(${parking.id})" class="popup-btn secondary">
+                  📋 详情
+                </button>
+              </div>
+            </div>
+          `
+
+          marker.bindPopup(popupContent, {
+            maxWidth: 300,
+            className: 'custom-parking-popup'
+          })
+
+          marker.on('click', () => {
+            selectedParking.value = {
+              ...parking,
+              coordinates: [parking.latitude, parking.longitude]
+            }
+          })
+
+          markersLayer.addLayer(marker)
+        }
+      })
+
+      console.log(`🗺️ Added ${filteredData.length} pin markers to map`)
+    }
+
+    // 全局函数供弹出窗口使用
+    window.getDirections = (lat, lng) => {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+      window.open(url, '_blank')
+    }
+
+    window.selectParkingDetails = (parkingId) => {
+      const parking = parkingData.value.find(p => p.id === parkingId)
+      if (parking) {
+        selectedParking.value = {
+          ...parking,
+          coordinates: [parking.latitude, parking.longitude]
+        }
+      }
+    }
+
+    // 显示消息
+    const showMessage = (message, type = 'info') => {
+      statusMessage.value = message
+      messageType.value = type
+      setTimeout(() => {
+        statusMessage.value = ''
+      }, 5000)
     }
 
     // 搜索功能
@@ -358,6 +463,13 @@ export default {
     }
 
     // ��滤功能
+    // 停车类型筛选功能
+    const setParkingTypeFilter = (filter) => {
+      parkingTypeFilter.value = filter
+      fetchParkingData()
+    }
+
+    // 状态筛选功能
     const setStatusFilter = (filter) => {
       statusFilter.value = filter
       fetchParkingData()
@@ -391,8 +503,8 @@ export default {
               map.removeLayer(userMarker)
             }
 
-            userMarker = window.L.marker([latitude, longitude], {
-              icon: window.L.divIcon({
+            userMarker = L.marker([latitude, longitude], {
+              icon: L.divIcon({
                 html: '<div class="user-marker">📍</div>',
                 className: 'user-marker-container',
                 iconSize: [24, 24],
@@ -415,28 +527,6 @@ export default {
     const toggleMapStyle = () => {
       mapStyle.value = mapStyle.value === 'street' ? 'satellite' : 'street'
       updateMapStyle()
-    }
-
-    const updateMapStyle = () => {
-      if (!map) return
-
-      // 移除现有瓦片图层
-      map.eachLayer((layer) => {
-        if (layer instanceof window.L.TileLayer) {
-          map.removeLayer(layer)
-        }
-      })
-
-      // 添加新的瓦片图层
-      if (mapStyle.value === 'satellite') {
-        window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles © Esri'
-        }).addTo(map)
-      } else {
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(map)
-      }
     }
 
     const getDirections = () => {
@@ -481,28 +571,10 @@ export default {
       return new Date(timestamp).toLocaleString()
     }
 
-    const showMessage = (message, type = 'info') => {
-      statusMessage.value = message
-      messageType.value = type
-      setTimeout(() => {
-        statusMessage.value = ''
-      }, 5000)
-    }
-
-    const getDemoData = () => [
-      {
-        id: 'demo_1',
-        kerbside_id: 'DEMO_001',
-        zone_number: '1A',
-        status: 'Unoccupied',
-        coordinates: [-37.8136, 144.9631],
-        last_updated: new Date().toISOString()
-      }
-    ]
-
     // 生命周期钩子
     onMounted(() => {
-      initMap()
+      // 延迟初始化地图，确保DOM已渲染
+      setTimeout(initMap, 100)
 
       // 设置自动刷新
       refreshInterval = setInterval(() => {
@@ -515,8 +587,12 @@ export default {
       if (refreshInterval) {
         clearInterval(refreshInterval)
       }
+      if (map) {
+        map.remove()
+      }
     })
 
+    // 返回组件需要的数据和方法
     return {
       // 数据
       selectedParking,
@@ -524,31 +600,63 @@ export default {
       parkingStats,
       searchQuery,
       statusFilter,
+      parkingTypeFilter,
       isLoading,
-      isSearching,
       statusMessage,
       messageType,
       loadingMessage,
       connectionStatus,
-      connectionStatusText,
       mapStyle,
+      connectionStatusText,
 
       // 方法
-      performSearch,
-      onSearchInput,
-      clearSearch,
-      setStatusFilter,
-      selectParking,
-      closePanel,
-      refreshData,
-      locateUser,
-      toggleMapStyle,
-      getDirections,
-      shareLocation,
-      getStatusClass,
-      getStatusText,
-      formatCoordinates,
-      formatTimestamp
+      initMap,
+      fetchParkingData,
+      updateMarkers,
+      showMessage,
+
+      // 事件处理方法（需要实现）
+      performSearch: () => {
+        if (searchQuery.value.trim()) {
+          fetchParkingData({ suburb: searchQuery.value })
+        }
+      },
+      clearSearch: () => {
+        searchQuery.value = ''
+        fetchParkingData()
+      },
+      setParkingTypeFilter: (type) => {
+        parkingTypeFilter.value = type
+        updateMarkers()
+      },
+      setStatusFilter: (status) => {
+        statusFilter.value = status
+        updateMarkers()
+      },
+      refreshData: () => {
+        fetchParkingData()
+        fetchParkingStats()
+      },
+      toggleMapStyle: () => {
+        mapStyle.value = mapStyle.value === 'street' ? 'satellite' : 'street'
+        updateMapStyle()
+      },
+      locateUser: () => {
+        // 实现用户定位功能
+        console.log('Locating user...')
+      },
+      closePanel: () => {
+        selectedParking.value = null
+      },
+      getStatusClass: (status) => status || 'unknown',
+      getStatusText: (status) => status || 'Unknown',
+      formatCoordinates: (coords) => coords ? `${coords.lat}, ${coords.lon}` : 'N/A',
+      formatTimestamp: (timestamp) => timestamp ? new Date(timestamp).toLocaleString() : 'N/A',
+      getDirections: () => console.log('Getting directions...'),
+      shareLocation: () => console.log('Sharing location...'),
+      onSearchInput: () => {
+        // 可以实现实时搜索建议
+      }
     }
   }
 }
@@ -608,6 +716,46 @@ export default {
   cursor: pointer;
   font-size: 1.2rem;
   padding: 0.2rem;
+}
+
+/* 停车类型筛选按钮 */
+.parking-type-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.type-btn {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #dee2e6;
+  background: white;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.type-btn:hover {
+  border-color: #28a745;
+  transform: translateY(-1px);
+}
+
+.type-btn.active {
+  background: #28a745;
+  color: white;
+  border-color: #28a745;
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.type-btn .btn-icon {
+  font-size: 1.1rem;
 }
 
 .filter-buttons {
@@ -670,6 +818,14 @@ export default {
 
 .stat-item.occupied .stat-number {
   color: #dc3545;
+}
+
+.stat-item.on-street .stat-number {
+  color: #007bff;
+}
+
+.stat-item.off-street .stat-number {
+  color: #6f42c1;
 }
 
 /* 地图容器 */
@@ -759,147 +915,6 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
-}
-
-/* 详情面板 */
-.details-panel {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
-  transform: translateY(100%);
-  transition: transform 0.3s ease;
-  z-index: 1000;
-  max-height: 50vh;
-  overflow-y: auto;
-}
-
-.details-panel.visible {
-  transform: translateY(0);
-}
-
-.panel-header {
-  padding: 1.5rem 1.5rem 1rem;
-  border-bottom: 1px solid #dee2e6;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #212529;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #6c757d;
-  padding: 0.5rem;
-  border-radius: 50%;
-  transition: background-color 0.3s;
-}
-
-.close-btn:hover {
-  background: #f8f9fa;
-}
-
-.panel-content {
-  padding: 1.5rem;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-weight: 500;
-}
-
-.status-indicator.available {
-  background: #d4edda;
-  color: #155724;
-}
-
-.status-indicator.occupied {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.details-grid {
-  display: grid;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.detail-label {
-  font-weight: 500;
-  color: #6c757d;
-}
-
-.detail-value {
-  color: #212529;
-  font-weight: 500;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.action-btn {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.action-btn.primary {
-  background: #007bff;
-  color: white;
-}
-
-.action-btn.primary:hover {
-  background: #0056b3;
-}
-
-.action-btn.secondary {
-  background: #f8f9fa;
-  color: #495057;
-  border: 1px solid #dee2e6;
-}
-
-.action-btn.secondary:hover {
-  background: #e9ecef;
 }
 
 /* 加载覆盖层 */
@@ -1022,6 +1037,30 @@ export default {
   border: 3px solid #dc3545;
 }
 
+:deep(.parking-marker.on-street) {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+}
+
+:deep(.parking-marker.off-street) {
+  background: linear-gradient(135deg, #f3e5f5, #e1bee7);
+}
+
+:deep(.parking-marker .marker-type) {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #007bff;
+  color: white;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
 :deep(.user-marker-container) {
   background: none !important;
   border: none !important;
@@ -1053,46 +1092,198 @@ export default {
   font-weight: bold;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .search-container {
-    padding: 0.75rem;
-  }
+/* 自定义针脚标记样式 */
+:deep(.custom-pin-container) {
+  background: none !important;
+  border: none !important;
+}
 
-  .stats-bar {
-    padding: 0.75rem;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
+:deep(.custom-pin) {
+  position: relative;
+  width: 40px;
+  height: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.3s ease;
+  cursor: pointer;
+}
 
-  .stat-item {
-    flex: 1;
-    min-width: calc(50% - 0.25rem);
-  }
+:deep(.custom-pin:hover) {
+  transform: scale(1.1);
+  z-index: 1000;
+}
 
-  .filter-buttons {
-    justify-content: center;
-  }
+:deep(.pin-head) {
+  width: 32px;
+  height: 32px;
+  background: var(--pin-color);
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
 
-  .details-panel {
-    max-height: 60vh;
-  }
+:deep(.pin-point) {
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 12px solid var(--pin-color);
+  margin-top: -2px;
+  z-index: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
 
-  .action-buttons {
-    flex-direction: column;
-  }
+:deep(.pin-content) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
 
-  .map-controls {
-    flex-direction: row;
-    top: auto;
-    bottom: 1rem;
-    right: 1rem;
-    left: 1rem;
-  }
+:deep(.parking-icon) {
+  font-size: 12px;
+  line-height: 1;
+  margin-bottom: 1px;
+}
 
-  .control-btn {
-    flex: 1;
-    min-width: auto;
-  }
+:deep(.spaces-count) {
+  font-size: 8px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  line-height: 1;
+}
+
+/* 弹出窗口样式优化 */
+:deep(.custom-parking-popup .leaflet-popup-content-wrapper) {
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+:deep(.custom-parking-popup .leaflet-popup-content) {
+  margin: 0;
+  width: 280px !important;
+}
+
+:deep(.parking-popup) {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+:deep(.popup-header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+:deep(.popup-title) {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+:deep(.popup-badge) {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  backdrop-filter: blur(10px);
+}
+
+:deep(.popup-body) {
+  padding: 1rem;
+  background: white;
+}
+
+:deep(.info-row) {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.info-row:last-child) {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+:deep(.info-label) {
+  font-weight: 500;
+  color: #666;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  width: 80px;
+}
+
+:deep(.info-value) {
+  color: #333;
+  font-size: 0.9rem;
+  text-align: right;
+  flex: 1;
+  word-break: break-word;
+}
+
+:deep(.spaces-highlight) {
+  color: #28a745;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+:deep(.popup-actions) {
+  padding: 1rem;
+  background: #f8f9fa;
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid #e9ecef;
+}
+
+:deep(.popup-btn) {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+:deep(.popup-btn.primary) {
+  background: #007bff;
+  color: white;
+}
+
+:deep(.popup-btn.primary:hover) {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+:deep(.popup-btn.secondary) {
+  background: white;
+  color: #495057;
+  border: 1px solid #dee2e6;
+}
+
+:deep(.popup-btn.secondary:hover) {
+  background: #e9ecef;
+  transform: translateY(-1px);
 }
 </style>

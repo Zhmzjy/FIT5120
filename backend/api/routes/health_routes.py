@@ -1,10 +1,11 @@
 """
 Health Check Routes for Melbourne Parking API
+Updated for PostgreSQL database
 """
 
 from flask import Blueprint, jsonify
 from datetime import datetime
-from ..models import ParkingSensor, db
+from ..models import db, OffStreetParking, Suburb
 
 # Create health routes blueprint
 health_bp = Blueprint('health', __name__)
@@ -14,88 +15,79 @@ health_bp = Blueprint('health', __name__)
 @health_bp.route('/check', methods=['GET'])
 def health_check():
     """
-    Basic health check endpoint - optimized for Render.com
+    Basic health check endpoint for PostgreSQL database
     """
     try:
-        # Simplified database connection test - avoid SQLAlchemy version conflicts
-        sensor_count = ParkingSensor.query.count()
+        # Test database connection with our PostgreSQL data
+        facility_count = OffStreetParking.query.count()
+        suburb_count = Suburb.query.count()
 
         return jsonify({
             'status': 'healthy',
             'service': 'Melbourne Parking API',
-            'version': '1.0.0',
+            'version': '2.0.0',
+            'database': 'PostgreSQL',
             'timestamp': datetime.utcnow().isoformat(),
-            'database': {
-                'status': 'connected',
-                'total_sensors': sensor_count
+            'data': {
+                'parking_facilities': facility_count,
+                'suburbs': suburb_count,
+                'database_status': 'connected'
             }
-        }), 200
-
-    except Exception as e:
-        # Return healthy status even if database is still initializing
-        return jsonify({
-            'status': 'healthy',
-            'service': 'Melbourne Parking API',
-            'version': '1.0.0',
-            'timestamp': datetime.utcnow().isoformat(),
-            'database': {
-                'status': 'initializing',
-                'message': 'Service starting up'
-            }
-        }), 200
-
-@health_bp.route('/detailed', methods=['GET'])
-def detailed_health_check():
-    """
-    Detailed health check with component status
-    """
-    try:
-        # Check database
-        sensor_count = ParkingSensor.query.count()
-
-        # Check recent data updates
-        recent_sensors = ParkingSensor.query.filter(
-            ParkingSensor.last_updated >= datetime.utcnow().replace(hour=0, minute=0, second=0)
-        ).count()
-
-        components = {
-            'database': {
-                'status': 'healthy',
-                'total_sensors': sensor_count,
-                'recent_updates': recent_sensors
-            },
-            'api': {
-                'status': 'healthy',
-                'melbourne_gov_api': 'reachable'
-            }
-        }
-
-        # Determine overall status
-        overall_status = 'healthy'
-        if sensor_count == 0:
-            overall_status = 'warning'
-            components['database']['status'] = 'warning'
-            components['database']['message'] = 'No sensor data found'
-
-        return jsonify({
-            'status': overall_status,
-            'service': 'Melbourne Parking API',
-            'version': '1.0.0',
-            'timestamp': datetime.utcnow().isoformat(),
-            'components': components
         })
 
     except Exception as e:
         return jsonify({
             'status': 'unhealthy',
             'service': 'Melbourne Parking API',
-            'version': '1.0.0',
+            'version': '2.0.0',
+            'database': 'PostgreSQL',
             'timestamp': datetime.utcnow().isoformat(),
             'error': str(e),
-            'components': {
-                'database': {
-                    'status': 'unhealthy',
-                    'error': str(e)
-                }
+            'data': {
+                'database_status': 'disconnected'
             }
-        }), 500
+        }), 503
+
+@health_bp.route('/api/health', methods=['GET'])
+def api_health_check():
+    """
+    Detailed API health check with database stats
+    """
+    try:
+        # Get database statistics
+        facility_count = OffStreetParking.query.count()
+        suburb_count = Suburb.query.count()
+
+        # Get total parking spaces
+        total_spaces = db.session.query(db.func.sum(OffStreetParking.parking_spaces)).scalar() or 0
+
+        return jsonify({
+            'status': 'healthy',
+            'service': 'Melbourne Parking API',
+            'version': '2.0.0',
+            'database': {
+                'type': 'PostgreSQL',
+                'status': 'connected',
+                'statistics': {
+                    'parking_facilities': facility_count,
+                    'total_suburbs': suburb_count,
+                    'total_parking_spaces': int(total_spaces)
+                }
+            },
+            'endpoints': {
+                'facilities': '/api/parking/facilities',
+                'suburbs': '/api/parking/suburbs',
+                'search': '/api/parking/search',
+                'stats': '/api/stats'
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'service': 'Melbourne Parking API',
+            'version': '2.0.0',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 503
