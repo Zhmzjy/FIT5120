@@ -7,6 +7,7 @@ from .parking_routes import parking_bp
 from .stats_routes import stats_bp
 from .health_routes import health_bp
 from .car_growth_routes import car_growth_bp
+from .population_growth_routes import population_bp
 
 def register_routes(app):
     """
@@ -15,6 +16,8 @@ def register_routes(app):
     Args:
         app: Flask application instance
     """
+    
+    
     # Register health routes at root level - fix health check path
     app.register_blueprint(health_bp, url_prefix='')
 
@@ -26,4 +29,6 @@ def register_routes(app):
 
     app.register_blueprint(car_growth_bp, url_prefix='/api/car-growth')
 
-__all__ = ['parking_bp', 'stats_bp', 'health_bp', 'register_routes']
+    app.register_blueprint(population_bp, url_prefix='/api/population')
+
+__all__ = ['health_bp', 'parking_bp','stats_bp','car_growth_bp', 'population_bp']

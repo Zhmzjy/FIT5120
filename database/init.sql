@@ -111,3 +111,22 @@ INSERT IGNORE INTO parking_lots (name, address, latitude, longitude, total_space
 GRANT ALL PRIVILEGES ON fit5120_db.* TO 'parking_user'@'%';
 GRANT ALL PRIVILEGES ON fit5120_db.* TO 'root'@'%';
 FLUSH PRIVILEGES;
+
+CREATE TABLE population_growth (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    year INT NOT NULL UNIQUE,
+    count INT NOT NULL,
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT INTO population_growth (year, count)
+VALUES
+  (2015, 128000),
+  (2016, 131500),
+  (2017, 135000),
+  (2018, 140000),
+  (2019, 144000),
+  (2020, 142000),
+  (2021, 148000),
+  (2022, 152000),
+  (2023, 155500);

@@ -117,5 +117,23 @@ class CarGrowth(db.Model):
 
     def __repr__(self):
         return f'<CarGrowth {self.year}: {self.count}>'
-    
+
+class PopulationGrowth(db.Model):
+    __tablename__ = 'population_growth'
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False, unique=True)
+    population = db.Column(db.Integer, nullable=False)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'year': self.year,
+            'population': self.population,
+            'last_updated': self.last_updated.isoformat()
+        }
+
+    def __repr__(self):
+        return f'<PopulationGrowth {self.year}: {self.population}>'
 

@@ -87,7 +87,10 @@
           <span class="btn-icon">📈</span>
           Vehicle Growth Trend
         </button>
-        
+        <button @click="showPopulationChartModal = true" class="control-btn">
+          <span class="btn-icon">👥</span>
+          CBD Population Growth
+        </button>
       </div>
 
       <!-- load-overlay -->
@@ -139,6 +142,8 @@
             Share Location
           </button>
         </div>
+
+      
       </div>
     </div>
 
@@ -155,6 +160,13 @@
         <CarGrowthChart />
       </div>
     </div>
+
+    <div v-if="showPopulationChartModal" class="modal-overlay">
+      <div class="modal-content">
+        <button class="close-btn" @click="showPopulationChartModal = false">×</button>
+        <PopulationGrowthChart />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -162,12 +174,14 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import CarGrowthChart from './CarGrowthChart.vue'
+import PopulationGrowthChart from './PopulationGrowthChart.vue'
 export default {
   name: 'MelbourneParkingMap',
-  components: { CarGrowthChart },
+  components: { CarGrowthChart, PopulationGrowthChart },
   setup() {
     // 响应式数据
     const showChartModal = ref(false)
+    const showPopulationChartModal = ref(false)
     const selectedParking = ref(null)
     const parkingData = ref([])
     const parkingStats = ref(null)
@@ -550,6 +564,7 @@ export default {
       connectionStatusText,
       mapStyle,
       showChartModal,
+      showPopulationChartModal,
       // 方法
       performSearch,
       onSearchInput,
