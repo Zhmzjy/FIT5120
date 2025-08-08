@@ -123,7 +123,7 @@ class PopulationGrowth(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     year = db.Column(db.Integer, nullable=False, unique=True)
-    population = db.Column(db.Integer, nullable=False)
+    count = db.Column(db.Integer, nullable=False)
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
