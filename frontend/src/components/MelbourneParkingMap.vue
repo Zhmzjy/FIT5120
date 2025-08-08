@@ -190,7 +190,7 @@ export default {
 
     // API配置 - 自动适应开发和生产环境
     const API_BASE = import.meta.env.VITE_API_BASE_URL ||
-                     (import.meta.env.DEV ? 'http://localhost:5001' : '')
+                     (import.meta.env.DEV ? 'http://localhost:5000' : '')
 
     // 计算属性
     const connectionStatusText = computed(() => {
