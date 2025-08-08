@@ -100,3 +100,22 @@ class UserPreference(db.Model):
 
     def __repr__(self):
         return f'<UserPreference {self.session_id}: {self.preferred_area}>'
+    
+class CarGrowth(db.Model):
+    __tablename__ = 'car_growth'
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False, unique=True)
+    count = db.Column(db.Integer, nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'year': self.year,
+            'count': self.count
+        }
+
+    def __repr__(self):
+        return f'<CarGrowth {self.year}: {self.count}>'
+    
+

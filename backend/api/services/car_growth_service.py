@@ -1,24 +1,23 @@
-
 from datetime import datetime
-from typing import Dict
+from typing import List, Dict
+from ..models import CarGrowth, db
 
 class CarGrowthService:
-    """Provides car ownership growth trend data"""
+    """Service for retrieving and managing car ownership growth data"""
 
     @classmethod
     def get_growth_data(cls) -> Dict:
+        """
+        Fetch car growth data from the database
+        Returns:
+            Dictionary with years, counts, and metadata
+        """
         try:
-            years = list(range(2015, 2024))
-            car_counts = [
-                1100000, 1150000, 1190000,
-                1250000, 1300000, 1280000,
-                1350000, 1400000, 1450000
-            ]
-
+            records = CarGrowth.query.order_by(CarGrowth.year).all()
             return {
                 'success': True,
-                'years': years,
-                'counts': car_counts,
+                'years': [r.year for r in records],
+                'counts': [r.count for r in records],
                 'last_updated': datetime.utcnow().isoformat()
             }
         except Exception as e:
@@ -28,3 +27,22 @@ class CarGrowthService:
                 'years': [],
                 'counts': []
             }
+
+
+    @classmethod
+    def add_or_update(cls, year: int, count: int) -> bool:
+        """
+        Insert or update a car growth record
+        """
+        try:
+            record = CarGrowth.query.filter_by(year=year).first()
+            if record:
+                record.count = count
+            else:
+                db.session.add(CarGrowth(year=year, count=count))
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error updating CarGrowth: {e}")
+            return False
