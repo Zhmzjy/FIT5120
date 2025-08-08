@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS off_street_parking CASCADE;
 DROP TABLE IF EXISTS suburbs CASCADE;
 DROP TABLE IF EXISTS off_street_car_parks CASCADE;
 DROP TABLE IF EXISTS vic_suburb_boundaries CASCADE;
+DROP TABLE IF EXISTS on_street_sensors CASCADE;
 
 -- 1. Create suburbs table (master reference table)
 CREATE TABLE suburbs (
@@ -90,6 +91,20 @@ CREATE TABLE parking_spaces (
     UNIQUE(off_street_parking_id, space_number)
 );
 
+-- On-street parking sensors table
+CREATE TABLE IF NOT EXISTS on_street_sensors (
+    id SERIAL PRIMARY KEY,
+    device_id VARCHAR(255) UNIQUE,
+    bay_id VARCHAR(255),
+    st_marker_id VARCHAR(255),
+    status VARCHAR(50),
+    location JSONB,
+    latitude DECIMAL(11, 8),
+    longitude DECIMAL(11, 8),
+    last_updated TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for performance
 -- Suburbs indexes
 CREATE INDEX idx_suburbs_name ON suburbs(suburb_name);
@@ -117,6 +132,11 @@ CREATE INDEX IF NOT EXISTS idx_off_street_clue_area ON off_street_car_parks(clue
 -- Suburb boundaries indexes
 CREATE INDEX IF NOT EXISTS idx_suburb_boundaries_name ON vic_suburb_boundaries(suburb_name);
 CREATE INDEX IF NOT EXISTS idx_suburb_boundaries_postcode ON vic_suburb_boundaries(postcode);
+
+-- On-street sensors indexes
+CREATE INDEX IF NOT EXISTS idx_on_street_sensors_location ON on_street_sensors USING GIST ((longitude, latitude));
+CREATE INDEX IF NOT EXISTS idx_on_street_sensors_status ON on_street_sensors(status);
+CREATE INDEX IF NOT EXISTS idx_on_street_sensors_device_id ON on_street_sensors(device_id);
 
 -- Create functions for spatial operations
 -- Function to find suburb for a given coordinate

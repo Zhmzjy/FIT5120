@@ -15,32 +15,7 @@
         <button v-if="searchQuery" @click="clearSearch" class="clear-btn">×</button>
       </div>
 
-      <!-- 停车类型筛选按钮 -->
-      <div class="parking-type-buttons">
-        <button
-          @click="setParkingTypeFilter('all')"
-          :class="['type-btn', { active: parkingTypeFilter === 'all' }]"
-        >
-          <span class="btn-icon">🅿️</span>
-          All Parking
-        </button>
-        <button
-          @click="setParkingTypeFilter('on-street')"
-          :class="['type-btn', { active: parkingTypeFilter === 'on-street' }]"
-        >
-          <span class="btn-icon">🚗</span>
-          On-Street
-        </button>
-        <button
-          @click="setParkingTypeFilter('off-street')"
-          :class="['type-btn', { active: parkingTypeFilter === 'off-street' }]"
-        >
-          <span class="btn-icon">🏢</span>
-          Off-Street
-        </button>
-      </div>
-
-      <!-- 状态过滤按钮 -->
+      <!-- 状态过滤按钮 - 简化为三个选项 -->
       <div class="filter-buttons">
         <button
           @click="setStatusFilter('all')"
@@ -49,37 +24,17 @@
           All Spaces
         </button>
         <button
-          @click="setStatusFilter('available')"
-          :class="['filter-btn', { active: statusFilter === 'available' }]"
+          @click="setStatusFilter('on-street')"
+          :class="['filter-btn', { active: statusFilter === 'on-street' }]"
         >
-          Available Only
+          On-Street
         </button>
         <button
-          @click="setStatusFilter('occupied')"
-          :class="['filter-btn', { active: statusFilter === 'occupied' }]"
+          @click="setStatusFilter('off-street')"
+          :class="['filter-btn', { active: statusFilter === 'off-street' }]"
         >
-          Occupied Only
+          Off-Street
         </button>
-      </div>
-    </div>
-
-    <!-- 统计信息栏 -->
-    <div class="stats-bar" v-if="parkingStats">
-      <div class="stat-item">
-        <span class="stat-number">{{ parkingStats.total_parking_spaces || parkingStats.total_sensors }}</span>
-        <span class="stat-label">Total Spaces</span>
-      </div>
-      <div class="stat-item on-street">
-        <span class="stat-number">{{ parkingStats.on_street_spaces || parkingStats.available }}</span>
-        <span class="stat-label">On-Street</span>
-      </div>
-      <div class="stat-item off-street">
-        <span class="stat-number">{{ parkingStats.off_street_spaces || parkingStats.occupied }}</span>
-        <span class="stat-label">Off-Street</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-number">{{ parkingStats.on_street_occupancy_rate || parkingStats.occupancy_rate }}%</span>
-        <span class="stat-label">Occupancy Rate</span>
       </div>
     </div>
 
@@ -146,7 +101,6 @@ export default {
     const parkingStats = ref(null)
     const searchQuery = ref('')
     const statusFilter = ref('all')
-    const parkingTypeFilter = ref('all') // 新增：停车类型筛选
     const isLoading = ref(false)
     const isSearching = ref(false)
     const statusMessage = ref('')
@@ -162,9 +116,8 @@ export default {
     let userMarker = null
     let refreshInterval = null
 
-    // API配置 - 修正API端口
-    const API_BASE = import.meta.env.VITE_API_BASE_URL ||
-                     (import.meta.env.DEV ? 'http://localhost:8888' : '')
+    // API配置 - 确保使用正确的端口8889
+    const API_BASE = 'http://localhost:8889'
 
     // 计算属性
     const connectionStatusText = computed(() => {
@@ -238,17 +191,73 @@ export default {
         isLoading.value = true
         loadingMessage.value = 'Loading parking data...'
 
-        console.log('📡 Fetching parking data from:', `${API_BASE}/api/parking/search`)
+        console.log('📡 Fetching parking data from both sources')
+        console.log('📋 Search params:', searchParams)
 
-        const params = new URLSearchParams({
+        // 同时获取off-street和on-street数据
+        const promises = []
+
+        // Off-street停车场数据
+        let offStreetParams = {
           limit: '500',
           ...searchParams
+        }
+        promises.push(
+          axios.get(`${API_BASE}/api/parking/search?${new URLSearchParams(offStreetParams)}`)
+            .then(response => ({
+              type: 'off-street',
+              data: response.data.map(item => ({
+                ...item,
+                data_source: 'off-street',
+                parking_type: 'Off-Street'
+              }))
+            }))
+            .catch(error => {
+              console.error('❌ Error fetching off-street data:', error)
+              return { type: 'off-street', data: [] }
+            })
+        )
+
+        // On-street传感器数据 - 限制为100个
+        let onStreetParams = {
+          limit: '100',  // 只获取100个on-street传感器
+          active_hours: '24',
+          ...searchParams
+        }
+        promises.push(
+          axios.get(`${API_BASE}/api/sensors/sensors?${new URLSearchParams(onStreetParams)}`)
+            .then(response => ({
+              type: 'on-street',
+              data: response.data.map(item => ({
+                ...item,
+                data_source: 'on-street',
+                parking_type: 'On-Street',
+                parking_spaces: 1 // 传感器代表1个停车位
+              }))
+            }))
+            .catch(error => {
+              console.error('❌ Error fetching on-street data:', error)
+              return { type: 'on-street', data: [] }
+            })
+        )
+
+        // 等待所有数据加载完成
+        const results = await Promise.all(promises)
+
+        // 合并数据
+        let allData = []
+        results.forEach(result => {
+          if (result.data && Array.isArray(result.data)) {
+            allData = allData.concat(result.data)
+          }
         })
 
-        const response = await axios.get(`${API_BASE}/api/parking/search?${params}`)
-        parkingData.value = response.data
+        parkingData.value = allData
 
         console.log(`✅ Loaded ${parkingData.value.length} parking facilities`)
+        console.log('📊 Off-street count:', results.find(r => r.type === 'off-street')?.data.length || 0)
+        console.log('📊 On-street count:', results.find(r => r.type === 'on-street')?.data.length || 0)
+
         updateMarkers()
         showMessage(`Loaded ${parkingData.value.length} parking facilities`, 'success')
 
@@ -278,38 +287,54 @@ export default {
       // 清除现有标记
       markersLayer.clearLayers()
 
-      // 过滤数据
-      const filteredData = parkingData.value.filter(item => {
-        if (parkingTypeFilter.value !== 'all') {
-          // 根据停车类型过滤
-          return true // 暂时显示所有数据
-        }
-        return true
-      })
+      // 根据筛选条件过滤数据
+      let filteredData = parkingData.value
+
+      // 根据状态过滤
+      if (statusFilter.value === 'on-street') {
+        filteredData = parkingData.value.filter(parking =>
+          parking.data_source === 'on-street' || parking.parking_type === 'On-Street'
+        )
+      } else if (statusFilter.value === 'off-street') {
+        filteredData = parkingData.value.filter(parking =>
+          parking.data_source === 'off-street' || parking.parking_type === 'Off-Street'
+        )
+      }
+
+      console.log(`🗺️ 准备显示 ${filteredData.length} 个标记 (筛选类型: ${statusFilter.value})`)
 
       // 添加停车场针脚标记
       filteredData.forEach(parking => {
         if (parking.latitude && parking.longitude) {
-          // 根据停车位数量确定标记颜色
-          const spaces = parking.parking_spaces || 0
+          // 根据数据源设置不同的标记样式
+          const spaces = parking.parking_spaces || 1
           let pinColor = '#28a745' // 默认绿色
+          let pinIcon = '🅿️'
 
-          if (spaces > 500) {
-            pinColor = '#dc3545' // 红色 - 大型停车场
-          } else if (spaces > 100) {
-            pinColor = '#fd7e14' // 橙色 - 中型停车场
-          } else if (spaces > 50) {
-            pinColor = '#ffc107' // 黄色 - 小型停车场
+          if (parking.data_source === 'on-street' || parking.parking_type === 'On-Street') {
+            // On-Street 传感器使用蓝色和车辆图标
+            pinColor = '#007bff' // 蓝色
+            pinIcon = '🚗'
+          } else if (parking.data_source === 'off-street') {
+            // Off-Street 停车场根据停车位数量设置颜色
+            if (spaces > 500) {
+              pinColor = '#dc3545' // 红色 - 大型停车场
+            } else if (spaces > 100) {
+              pinColor = '#fd7e14' // 橙色 - 中型停���场
+            } else if (spaces > 50) {
+              pinColor = '#ffc107' // 黄色 - 小型停车场
+            }
+            pinIcon = '🅿️'
+            // 50以下保持绿色
           }
-          // 50以下保持绿色
 
           // 创建自定义针脚图标
-          const pinIcon = L.divIcon({
+          const pinIconDiv = L.divIcon({
             html: `
               <div class="custom-pin" style="--pin-color: ${pinColor}">
                 <div class="pin-head">
                   <div class="pin-content">
-                    <span class="parking-icon">🅿️</span>
+                    <span class="parking-icon">${pinIcon}</span>
                     <span class="spaces-count">${spaces}</span>
                   </div>
                 </div>
@@ -323,53 +348,61 @@ export default {
           })
 
           const marker = L.marker([parking.latitude, parking.longitude], {
-            icon: pinIcon
+            icon: pinIconDiv
           })
 
           // 创建详细的弹出窗口内容
+          let displayAddress = parking.building_address || parking.device_id || '未知地址'
+          let displayArea = parking.clue_small_area || parking.bay_id || '未知区域'
+          let statusInfo = ''
+
+          if (parking.status) {
+            let statusText = parking.status
+            if (parking.status === 'Unoccupied') statusText = '空闲'
+            else if (parking.status === 'Present') statusText = '占用'
+
+            statusInfo = `
+              <div class="info-row">
+                <span class="info-label">状态:</span>
+                <span class="info-value">${statusText}</span>
+              </div>
+            `
+          }
+
           const popupContent = `
             <div class="parking-popup">
-              <div class="popup-header">
-                <h4 class="popup-title">🅿️ 停车场信息</h4>
-                <div class="popup-badge" style="background-color: ${pinColor}">
-                  ${spaces} 位
-                </div>
-              </div>
-
               <div class="popup-body">
-                <div class="info-row">
-                  <span class="info-label">📍 地址:</span>
-                  <span class="info-value">${parking.building_address || '未知地址'}</span>
+                <div class="popup-title">
+                  ${parking.data_source === 'on-street' ? '路边停车传感器' : '停车场信息'}
                 </div>
 
                 <div class="info-row">
-                  <span class="info-label">🏢 类型:</span>
+                  <span class="info-label">地址:</span>
+                  <span class="info-value">${displayAddress}</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="info-label">类型:</span>
                   <span class="info-value">${parking.parking_type || '未知'}</span>
                 </div>
 
                 <div class="info-row">
-                  <span class="info-label">🗺️ 区域:</span>
-                  <span class="info-value">${parking.clue_small_area || '未知区域'}</span>
+                  <span class="info-label">区域:</span>
+                  <span class="info-value">${displayArea}</span>
                 </div>
 
                 <div class="info-row">
-                  <span class="info-label">📊 停车位:</span>
+                  <span class="info-label">停车位:</span>
                   <span class="info-value spaces-highlight">${spaces} 个</span>
                 </div>
 
-                <div class="info-row">
-                  <span class="info-label">🧭 坐标:</span>
-                  <span class="info-value">${parseFloat(parking.latitude).toFixed(4)}, ${parseFloat(parking.longitude).toFixed(4)}</span>
-                </div>
-              </div>
+                ${statusInfo}
 
-              <div class="popup-actions">
-                <button onclick="getDirections(${parking.latitude}, ${parking.longitude})" class="popup-btn primary">
-                  🧭 导航
-                </button>
-                <button onclick="selectParkingDetails(${parking.id})" class="popup-btn secondary">
-                  📋 详情
-                </button>
+                <div class="popup-actions">
+                  <button onclick="getDirections(${parking.latitude}, ${parking.longitude})" class="popup-btn">
+                    导航
+                  </button>
+                </div>
               </div>
             </div>
           `
@@ -390,7 +423,7 @@ export default {
         }
       })
 
-      console.log(`🗺️ Added ${filteredData.length} pin markers to map`)
+      console.log(`🗺️ 成功添加 ${filteredData.length} 个标记到地图`)
     }
 
     // 全局函数供弹出窗口使用
@@ -463,16 +496,19 @@ export default {
     }
 
     // ��滤功能
-    // 停车类型筛选功能
-    const setParkingTypeFilter = (filter) => {
-      parkingTypeFilter.value = filter
-      fetchParkingData()
-    }
-
-    // 状态筛选功能
+    // 状态筛选功能 - 简化逻辑
     const setStatusFilter = (filter) => {
       statusFilter.value = filter
-      fetchParkingData()
+      console.log(`🔄 切换状态筛选到: ${filter}`)
+
+      // 根据筛选类型决定API请求参数
+      if (filter === 'on-street') {
+        fetchParkingData({ type: 'on-street' })
+      } else if (filter === 'off-street') {
+        fetchParkingData({ type: 'off-street' })
+      } else {
+        fetchParkingData() // 显示所有类型
+      }
     }
 
     // 工具函数
@@ -600,7 +636,6 @@ export default {
       parkingStats,
       searchQuery,
       statusFilter,
-      parkingTypeFilter,
       isLoading,
       statusMessage,
       messageType,
@@ -624,10 +659,6 @@ export default {
       clearSearch: () => {
         searchQuery.value = ''
         fetchParkingData()
-      },
-      setParkingTypeFilter: (type) => {
-        parkingTypeFilter.value = type
-        updateMarkers()
       },
       setStatusFilter: (status) => {
         statusFilter.value = status
@@ -718,46 +749,7 @@ export default {
   padding: 0.2rem;
 }
 
-/* 停车类型筛选按钮 */
-.parking-type-buttons {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.type-btn {
-  padding: 0.75rem 1.5rem;
-  border: 2px solid #dee2e6;
-  background: white;
-  border-radius: 25px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 0.9rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 120px;
-  justify-content: center;
-}
-
-.type-btn:hover {
-  border-color: #28a745;
-  transform: translateY(-1px);
-}
-
-.type-btn.active {
-  background: #28a745;
-  color: white;
-  border-color: #28a745;
-  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
-}
-
-.type-btn .btn-icon {
-  font-size: 1.1rem;
-}
-
+/* 状态过滤按钮 */
 .filter-buttons {
   display: flex;
   gap: 0.5rem;
@@ -783,49 +775,6 @@ export default {
   background: #007bff;
   color: white;
   border-color: #007bff;
-}
-
-/* 统计栏 */
-.stats-bar {
-  background: white;
-  padding: 1rem;
-  display: flex;
-  justify-content: space-around;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #212529;
-}
-
-.stat-label {
-  font-size: 0.8rem;
-  color: #6c757d;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-item.available .stat-number {
-  color: #28a745;
-}
-
-.stat-item.occupied .stat-number {
-  color: #dc3545;
-}
-
-.stat-item.on-street .stat-number {
-  color: #007bff;
-}
-
-.stat-item.off-street .stat-number {
-  color: #6f42c1;
 }
 
 /* 地图容器 */
@@ -1162,48 +1111,36 @@ export default {
   line-height: 1;
 }
 
-/* 弹出窗口样式优化 */
+/* 弹出窗口样式优化 - 全白色简洁设计 */
 :deep(.custom-parking-popup .leaflet-popup-content-wrapper) {
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 0;
   overflow: hidden;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 :deep(.custom-parking-popup .leaflet-popup-content) {
   margin: 0;
-  width: 280px !important;
+  width: 250px !important;
 }
 
 :deep(.parking-popup) {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-:deep(.popup-header) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 :deep(.popup-title) {
-  margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-}
-
-:deep(.popup-badge) {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: bold;
-  backdrop-filter: blur(10px);
+  color: #333;
+  margin-bottom: 1rem;
+  text-align: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eee;
 }
 
 :deep(.popup-body) {
-  padding: 1rem;
+  padding: 1.5rem;
   background: white;
 }
 
@@ -1211,14 +1148,11 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 0.8rem;
 }
 
-:deep(.info-row:last-child) {
-  border-bottom: none;
-  margin-bottom: 0;
+:deep(.info-row:last-of-type) {
+  margin-bottom: 1.5rem;
 }
 
 :deep(.info-label) {
@@ -1226,7 +1160,6 @@ export default {
   color: #666;
   font-size: 0.9rem;
   flex-shrink: 0;
-  width: 80px;
 }
 
 :deep(.info-value) {
@@ -1235,55 +1168,35 @@ export default {
   text-align: right;
   flex: 1;
   word-break: break-word;
+  margin-left: 1rem;
 }
 
 :deep(.spaces-highlight) {
-  color: #28a745;
+  color: #007bff;
   font-weight: bold;
   font-size: 1rem;
 }
 
 :deep(.popup-actions) {
-  padding: 1rem;
-  background: #f8f9fa;
-  display: flex;
-  gap: 0.5rem;
-  border-top: 1px solid #e9ecef;
+  margin-top: 1rem;
 }
 
 :deep(.popup-btn) {
-  flex: 1;
-  padding: 0.6rem 1rem;
-  border: none;
-  border-radius: 8px;
+  width: 100%;
+  padding: 0.8rem;
+  border: 2px solid #007bff;
+  border-radius: 6px;
+  background: #007bff;
+  color: white;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
 }
 
-:deep(.popup-btn.primary) {
-  background: #007bff;
-  color: white;
-}
-
-:deep(.popup-btn.primary:hover) {
+:deep(.popup-btn:hover) {
   background: #0056b3;
-  transform: translateY(-1px);
-}
-
-:deep(.popup-btn.secondary) {
-  background: white;
-  color: #495057;
-  border: 1px solid #dee2e6;
-}
-
-:deep(.popup-btn.secondary:hover) {
-  background: #e9ecef;
+  border-color: #0056b3;
   transform: translateY(-1px);
 }
 </style>
